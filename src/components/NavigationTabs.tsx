@@ -10,6 +10,9 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
+  PlusCircle,
+  Users,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export type ActiveTab =
@@ -31,6 +34,10 @@ interface NavigationTabsProps {
   overlapCount?: number;
   advisorCount?: number;
   transactionsCount?: number;
+  onOpenTradeModal?: () => void;
+  onOpenDividendModal?: () => void;
+  onOpenAdvisorModal?: () => void;
+  onOpenImportExportModal?: () => void;
 }
 
 export const NavigationTabs: React.FC<NavigationTabsProps> = ({
@@ -43,6 +50,10 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   dividendsCount = 0,
   overlapCount = 0,
   transactionsCount = 0,
+  onOpenTradeModal,
+  onOpenDividendModal,
+  onOpenAdvisorModal,
+  onOpenImportExportModal,
 }) => {
   const handleTabClick = (tab: ActiveTab) => {
     if (onTabChange) onTabChange(tab);
@@ -108,11 +119,11 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
 
   return (
     <aside
-      className={`bg-white border-r border-slate-200/90 flex flex-col justify-between transition-all duration-300 ease-in-out shrink-0 select-none ${
+      className={`bg-white border-r border-slate-200/90 flex flex-col justify-between transition-all duration-300 ease-in-out shrink-0 select-none sticky top-[57px] h-[calc(100vh-57px)] z-20 ${
         isCollapsed ? 'w-16 md:w-[68px]' : 'w-60 lg:w-64'
       }`}
     >
-      <div className="p-3 space-y-4">
+      <div className="p-3 space-y-4 overflow-y-auto overflow-x-hidden">
         {/* Sidebar Header with Collapse Toggle */}
         <div
           className={`flex items-center pb-2 border-b border-slate-100 ${
@@ -153,7 +164,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                 id={`nav-tab-${tab.id}`}
                 type="button"
                 onClick={() => handleTabClick(tab.id)}
-                title={isCollapsed ? tab.label : undefined}
+                title={tab.label}
                 className={`relative flex items-center rounded-xl transition-all font-medium text-xs group ${
                   isCollapsed
                     ? 'justify-center p-2.5'
@@ -206,30 +217,104 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
             );
           })}
         </nav>
+
+        {/* Sidebar Quick Shortcuts */}
+        {(onOpenTradeModal || onOpenDividendModal || onOpenAdvisorModal || onOpenImportExportModal) && (
+          <div className="pt-2 border-t border-slate-100">
+            {!isCollapsed && (
+              <span className="block text-[10px] font-bold tracking-wider text-slate-400 uppercase px-2 mb-2">
+                Quick Shortcuts
+              </span>
+            )}
+            <div className={`flex flex-col space-y-1 ${isCollapsed ? 'items-center' : ''}`}>
+              {onOpenTradeModal && (
+                <button
+                  type="button"
+                  id="btn-sidebar-quick-trade"
+                  onClick={onOpenTradeModal}
+                  title="Log New Trade"
+                  className={`flex items-center gap-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors ${
+                    isCollapsed ? 'p-2 justify-center' : 'px-3 py-2'
+                  }`}
+                >
+                  <PlusCircle className="w-4 h-4 text-slate-500 shrink-0" />
+                  {!isCollapsed && <span>Log Trade</span>}
+                </button>
+              )}
+
+              {onOpenDividendModal && (
+                <button
+                  type="button"
+                  id="btn-sidebar-quick-dividend"
+                  onClick={onOpenDividendModal}
+                  title="Log Dividend Payout"
+                  className={`flex items-center gap-2 rounded-xl text-xs font-semibold text-amber-800 hover:bg-amber-50 hover:text-amber-900 transition-colors ${
+                    isCollapsed ? 'p-2 justify-center' : 'px-3 py-2'
+                  }`}
+                >
+                  <Coins className="w-4 h-4 text-amber-600 shrink-0" />
+                  {!isCollapsed && <span>Log Dividend</span>}
+                </button>
+              )}
+
+              {onOpenAdvisorModal && (
+                <button
+                  type="button"
+                  id="btn-sidebar-quick-advisors"
+                  onClick={onOpenAdvisorModal}
+                  title="Manage Advisors & Portfolios"
+                  className={`flex items-center gap-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors ${
+                    isCollapsed ? 'p-2 justify-center' : 'px-3 py-2'
+                  }`}
+                >
+                  <Users className="w-4 h-4 text-slate-500 shrink-0" />
+                  {!isCollapsed && <span>Advisors</span>}
+                </button>
+              )}
+
+              {onOpenImportExportModal && (
+                <button
+                  type="button"
+                  id="btn-open-import-export"
+                  onClick={onOpenImportExportModal}
+                  title="Import Zerodha Kite CSV / Export Data"
+                  className={`flex items-center gap-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors ${
+                    isCollapsed ? 'p-2 justify-center' : 'px-3 py-2'
+                  }`}
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-slate-500 shrink-0" />
+                  {!isCollapsed && <span>Import / Export</span>}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bottom Footer / Collapse Toggle Shortcut */}
-      <div className="p-3 border-t border-slate-100/90">
+      <div className="p-3 border-t border-slate-100/90 bg-slate-50/50">
         {onToggleCollapse && (
           <button
             type="button"
+            id="btn-bottom-collapse-toggle"
             onClick={onToggleCollapse}
-            className={`w-full flex items-center rounded-xl p-2 text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100/80 transition-colors ${
+            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className={`w-full flex items-center rounded-xl p-2 text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-200/70 transition-colors ${
               isCollapsed ? 'justify-center' : 'justify-between px-3'
             }`}
           >
             <div className="flex items-center gap-2">
               {isCollapsed ? (
-                <ChevronRight className="w-4 h-4 text-slate-400" />
+                <ChevronRight className="w-4 h-4 text-slate-500" />
               ) : (
                 <>
-                  <ChevronLeft className="w-4 h-4 text-slate-400" />
+                  <ChevronLeft className="w-4 h-4 text-slate-500" />
                   <span>Collapse Menu</span>
                 </>
               )}
             </div>
             {!isCollapsed && (
-              <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+              <span className="text-[10px] font-mono text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200">
                 [ ]
               </span>
             )}

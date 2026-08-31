@@ -268,8 +268,9 @@ export const TradeLedgerView: React.FC<TradeLedgerViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onDeleteTransaction(tx.id)}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           title="Delete trade"
+                          aria-label="Delete trade"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
