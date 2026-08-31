@@ -203,6 +203,29 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
   const [targetModalAdvisorId, setTargetModalAdvisorId] = useState<string | undefined>(undefined);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-100 text-slate-900 flex items-center justify-center">
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
+          <div className="rounded-xl bg-slate-900 p-2 text-white">
+            <Layers className="h-4 w-4 text-indigo-400" />
+          </div>
+          <span className="text-sm font-medium text-slate-700">Loading your portfolio...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <AuthModal isOpen={true} onClose={() => {}} allowClose={false} onResetAllData={handleResetAllData} />
+        </div>
+      </div>
+    );
+  }
+
   // Local storage persistence
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.ADVISORS, JSON.stringify(advisors));

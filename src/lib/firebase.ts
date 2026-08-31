@@ -3,7 +3,14 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { initializeFirestore, memoryLocalCache, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const isLocalhost =
+  typeof window !== 'undefined' && ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+
+const resolvedFirebaseConfig = isLocalhost
+  ? { ...firebaseConfig, authDomain: 'localhost' }
+  : firebaseConfig;
+
+const app = !getApps().length ? initializeApp(resolvedFirebaseConfig) : getApp();
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
@@ -11,8 +18,8 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 // Initialize Firestore with memory cache so failed quota writes don't persistently queue & retry indefinitely
 const firestoreDbId =
-  firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
-    ? firebaseConfig.firestoreDatabaseId
+  resolvedFirebaseConfig.firestoreDatabaseId && resolvedFirebaseConfig.firestoreDatabaseId !== '(default)'
+    ? resolvedFirebaseConfig.firestoreDatabaseId
     : undefined;
 
 let firestoreInstance;
