@@ -1,0 +1,6 @@
+{
+  "name": "TradeWise",
+  "description": "Multi-advisor portfolio tracker and Zerodha Demat holding reconciliation with performance attribution, trade logs, and dividend tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

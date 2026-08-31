@@ -1,0 +1,41 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid",
+        "profile": {
+          "email": {
+            ".validate": "newData.isString()"
+          },
+          "displayName": {
+            ".validate": "newData.isString()"
+          },
+          "lastLogin": {
+            ".validate": "newData.isString()"
+          }
+        },
+        "advisors": {
+          "$advisorId": {
+            ".validate": "newData.hasChildren(['id', 'name', 'type', 'color', 'badgeBg', 'description', 'strategyStyle', 'createdAt'])"
+          }
+        },
+        "transactions": {
+          "$txId": {
+            ".validate": "newData.hasChildren(['id', 'advisorId', 'symbol', 'name', 'sector', 'marketCap', 'type', 'date', 'quantity', 'price', 'charges'])"
+          }
+        },
+        "dividends": {
+          "$divId": {
+            ".validate": "newData.hasChildren(['id', 'advisorId', 'symbol', 'name', 'exDate', 'creditDate', 'sharesEligible', 'perShareAmount', 'totalAmount'])"
+          }
+        },
+        "quotes": {
+          "$symbol": {
+            ".validate": "newData.hasChildren(['symbol', 'name', 'currentPrice'])"
+          }
+        }
+      }
+    }
+  }
+}
