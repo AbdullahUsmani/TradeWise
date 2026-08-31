@@ -1,41 +1,113 @@
 {
-  "rules": {
-    "users": {
-      "$uid": {
-        ".read": "$uid === auth.uid",
-        ".write": "$uid === auth.uid",
-        "profile": {
-          "email": {
-            ".validate": "newData.isString()"
-          },
-          "displayName": {
-            ".validate": "newData.isString()"
-          },
-          "lastLogin": {
-            ".validate": "newData.isString()"
-          }
-        },
-        "advisors": {
-          "$advisorId": {
-            ".validate": "newData.hasChildren(['id', 'name', 'type', 'color', 'badgeBg', 'description', 'strategyStyle', 'createdAt'])"
-          }
-        },
-        "transactions": {
-          "$txId": {
-            ".validate": "newData.hasChildren(['id', 'advisorId', 'symbol', 'name', 'sector', 'marketCap', 'type', 'date', 'quantity', 'price', 'charges'])"
-          }
-        },
-        "dividends": {
-          "$divId": {
-            ".validate": "newData.hasChildren(['id', 'advisorId', 'symbol', 'name', 'exDate', 'creditDate', 'sharesEligible', 'perShareAmount', 'totalAmount'])"
-          }
-        },
-        "quotes": {
-          "$symbol": {
-            ".validate": "newData.hasChildren(['symbol', 'name', 'currentPrice'])"
-          }
-        }
+  "entities": {
+    "advisor": {
+      "title": "Advisor",
+      "description": "An investment advisor or trading agent profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "sebiRegNo": { "type": "string" },
+        "color": { "type": "string" },
+        "badgeBg": { "type": "string" },
+        "description": { "type": "string" },
+        "strategyStyle": { "type": "string" },
+        "feeStructure": { "type": "string" },
+        "contactEmail": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "type", "color", "badgeBg", "strategyStyle"]
+    },
+    "portfolio": {
+      "title": "Advisor Portfolio",
+      "description": "A sub-portfolio or strategy basket under an advisor",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "advisorId": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "description": { "type": "string" },
+        "targetAllocationPct": { "type": "number" },
+        "color": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "advisorId", "name", "type"]
+    },
+    "transaction": {
+      "title": "Transaction",
+      "description": "Stock trade execution record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "advisorId": { "type": "string" },
+        "portfolioId": { "type": "string" },
+        "symbol": { "type": "string" },
+        "name": { "type": "string" },
+        "sector": { "type": "string" },
+        "marketCap": { "type": "string" },
+        "type": { "type": "string" },
+        "date": { "type": "string" },
+        "quantity": { "type": "number" },
+        "price": { "type": "number" },
+        "charges": { "type": "number" },
+        "notes": { "type": "string" },
+        "tradeTag": { "type": "string" }
+      },
+      "required": ["id", "advisorId", "symbol", "name", "type", "date", "quantity", "price"]
+    },
+    "dividend": {
+      "title": "Dividend",
+      "description": "Corporate dividend distribution entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "advisorId": { "type": "string" },
+        "portfolioId": { "type": "string" },
+        "symbol": { "type": "string" },
+        "name": { "type": "string" },
+        "exDate": { "type": "string" },
+        "creditDate": { "type": "string" },
+        "sharesEligible": { "type": "number" },
+        "perShareAmount": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "tdsDeducted": { "type": "number" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "advisorId", "symbol", "name", "creditDate", "sharesEligible", "totalAmount"]
+    },
+    "userPortfolioDoc": {
+      "title": "User Portfolio Document",
+      "description": "Consolidated portfolio document containing advisors, portfolios, transactions, dividends, and stock quotes for high efficiency sync",
+      "type": "object",
+      "properties": {
+        "advisors": { "type": "array" },
+        "portfolios": { "type": "array" },
+        "transactions": { "type": "array" },
+        "dividends": { "type": "array" },
+        "quotes": { "type": "object" },
+        "lastUpdated": { "type": "string" },
+        "dataVersion": { "type": "string" }
       }
+    }
+  },
+  "firestore": {
+    "/users/{userId}/portfolio/{docId}": {
+      "schema": { "$ref": "#/entities/userPortfolioDoc" },
+      "description": "Consolidated portfolio record for a user"
+    },
+    "/users/{userId}/advisors/{advisorId}": {
+      "schema": { "$ref": "#/entities/advisor" },
+      "description": "User advisor profile"
+    },
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/transaction" },
+      "description": "User trade transaction"
+    },
+    "/users/{userId}/dividends/{dividendId}": {
+      "schema": { "$ref": "#/entities/dividend" },
+      "description": "User dividend record"
     }
   }
 }

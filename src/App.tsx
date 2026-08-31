@@ -44,16 +44,13 @@ interface PortfolioAppContentProps {
   cloudLoadedData: CloudPortfolioData | null;
 }
 
-const isLegacyData = (advList: any[]) => {
-  return Array.isArray(advList) && advList.some((a) => ['Ethica Invest', 'Capital Mind Momentum', 'Niveshaay Smallcap', 'Growth Momentum Smallcase'].includes(a.name));
-};
-
 function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
   const {
     user,
     loading,
     saveUserDataToCloud,
     deleteAdvisorFromCloud,
+    deletePortfolioFromCloud,
     deleteTransactionFromCloud,
     deleteDividendFromCloud,
     clearAllUserData,
@@ -67,14 +64,6 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          if (isLegacyData(parsed)) {
-            localStorage.removeItem(STORAGE_KEYS.ADVISORS);
-            localStorage.removeItem(STORAGE_KEYS.PORTFOLIOS);
-            localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
-            localStorage.removeItem(STORAGE_KEYS.DIVIDENDS);
-            localStorage.removeItem(STORAGE_KEYS.QUOTES);
-            return INITIAL_ADVISORS;
-          }
           return parsed;
         }
       } catch (e) {
@@ -101,10 +90,6 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
     const saved = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
     if (saved) {
       try {
-        const advSaved = localStorage.getItem(STORAGE_KEYS.ADVISORS);
-        if (advSaved && isLegacyData(JSON.parse(advSaved))) {
-          return INITIAL_TRANSACTIONS;
-        }
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) return parsed;
       } catch (e) {
@@ -163,29 +148,33 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
   // Sync state when cloud data is loaded from Firestore for logged in user
   useEffect(() => {
     if (cloudLoadedData) {
-      if (isLegacyData(cloudLoadedData.advisors)) {
-        handleResetAllData();
-      } else {
-        setAdvisors(Array.isArray(cloudLoadedData.advisors) ? cloudLoadedData.advisors : []);
-        setPortfolios(Array.isArray(cloudLoadedData.portfolios) ? cloudLoadedData.portfolios : []);
-        setTransactions(Array.isArray(cloudLoadedData.transactions) ? cloudLoadedData.transactions : []);
-        setDividends(Array.isArray(cloudLoadedData.dividends) ? cloudLoadedData.dividends : []);
-        setQuotes(
-          cloudLoadedData.quotes && typeof cloudLoadedData.quotes === 'object' && !Array.isArray(cloudLoadedData.quotes)
-            ? cloudLoadedData.quotes
-            : {}
-        );
-      }
+      setAdvisors(Array.isArray(cloudLoadedData.advisors) ? cloudLoadedData.advisors : []);
+      setPortfolios(Array.isArray(cloudLoadedData.portfolios) ? cloudLoadedData.portfolios : []);
+      setTransactions(Array.isArray(cloudLoadedData.transactions) ? cloudLoadedData.transactions : []);
+      setDividends(Array.isArray(cloudLoadedData.dividends) ? cloudLoadedData.dividends : []);
+      setQuotes(
+        cloudLoadedData.quotes && typeof cloudLoadedData.quotes === 'object' && !Array.isArray(cloudLoadedData.quotes)
+          ? cloudLoadedData.quotes
+          : {}
+      );
     }
   }, [cloudLoadedData]);
 
-  // Active view and filters
+  // Active view, filters and sidebar collapse state
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [selectedAdvisorId, setSelectedAdvisorId] = useState<string>(() => advisors[0]?.id || '');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('tradewise_sidebar_collapsed') === 'true';
+  });
   const [timeframe, setTimeframe] = useState<TimeframeFilter>({
     preset: 'ALL',
     label: 'All-Time',
   });
+
+  // Persist sidebar collapsed state
+  useEffect(() => {
+    localStorage.setItem('tradewise_sidebar_collapsed', String(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
 
   // Keep selectedAdvisorId valid when advisors change
   useEffect(() => {
@@ -338,11 +327,14 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
       ...tradeData,
       id: `tx-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
     };
-    setTransactions((prev) => [newTx, ...prev]);
+    const nextTx = [newTx, ...transactions];
+    setTransactions(nextTx);
+    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(nextTx));
 
+    let nextQuotes = quotes;
     if (!quotes[tradeData.symbol]) {
-      setQuotes((prev) => ({
-        ...prev,
+      nextQuotes = {
+        ...quotes,
         [tradeData.symbol]: {
           symbol: tradeData.symbol,
           name: tradeData.name,
@@ -352,13 +344,24 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
           dayChange: 0,
           dayChangePercent: 0,
         },
-      }));
+      };
+      setQuotes(nextQuotes);
+      localStorage.setItem(STORAGE_KEYS.QUOTES, JSON.stringify(nextQuotes));
+    }
+
+    if (user) {
+      saveUserDataToCloud(advisors, nextTx, dividends, nextQuotes, portfolios);
     }
   };
 
   const handleDeleteTransaction = (id: string) => {
-    setTransactions((prev) => prev.filter((t) => t.id !== id));
-    deleteTransactionFromCloud(id);
+    const nextTx = transactions.filter((t) => t.id !== id);
+    setTransactions(nextTx);
+    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(nextTx));
+    if (user) {
+      deleteTransactionFromCloud(id);
+      saveUserDataToCloud(advisors, nextTx, dividends, quotes, portfolios);
+    }
   };
 
   const handleSaveDividend = (divData: Omit<Dividend, 'id'>) => {
@@ -366,12 +369,22 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
       ...divData,
       id: `div-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
     };
-    setDividends((prev) => [newDiv, ...prev]);
+    const nextDiv = [newDiv, ...dividends];
+    setDividends(nextDiv);
+    localStorage.setItem(STORAGE_KEYS.DIVIDENDS, JSON.stringify(nextDiv));
+    if (user) {
+      saveUserDataToCloud(advisors, transactions, nextDiv, quotes, portfolios);
+    }
   };
 
   const handleDeleteDividend = (id: string) => {
-    setDividends((prev) => prev.filter((d) => d.id !== id));
-    deleteDividendFromCloud(id);
+    const nextDiv = dividends.filter((d) => d.id !== id);
+    setDividends(nextDiv);
+    localStorage.setItem(STORAGE_KEYS.DIVIDENDS, JSON.stringify(nextDiv));
+    if (user) {
+      deleteDividendFromCloud(id);
+      saveUserDataToCloud(advisors, transactions, nextDiv, quotes, portfolios);
+    }
   };
 
   const handleAddAdvisor = (advData: Omit<Advisor, 'id' | 'createdAt'>) => {
@@ -380,20 +393,37 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
       id: `adv-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       createdAt: new Date().toISOString().split('T')[0],
     };
-    setAdvisors((prev) => [...prev, newAdv]);
+    const nextAdv = [...advisors, newAdv];
+    setAdvisors(nextAdv);
+    localStorage.setItem(STORAGE_KEYS.ADVISORS, JSON.stringify(nextAdv));
     if (!selectedAdvisorId) {
       setSelectedAdvisorId(newAdv.id);
+    }
+    if (user) {
+      saveUserDataToCloud(nextAdv, transactions, dividends, quotes, portfolios);
     }
   };
 
   const handleUpdateAdvisor = (updatedAdv: Advisor) => {
-    setAdvisors((prev) => prev.map((a) => (a.id === updatedAdv.id ? updatedAdv : a)));
+    const nextAdv = advisors.map((a) => (a.id === updatedAdv.id ? updatedAdv : a));
+    setAdvisors(nextAdv);
+    localStorage.setItem(STORAGE_KEYS.ADVISORS, JSON.stringify(nextAdv));
+    if (user) {
+      saveUserDataToCloud(nextAdv, transactions, dividends, quotes, portfolios);
+    }
   };
 
   const handleDeleteAdvisor = (id: string) => {
-    setAdvisors((prev) => prev.filter((a) => a.id !== id));
-    setPortfolios((prev) => prev.filter((p) => p.advisorId !== id));
-    deleteAdvisorFromCloud(id);
+    const nextAdv = advisors.filter((a) => a.id !== id);
+    const nextPort = portfolios.filter((p) => p.advisorId !== id);
+    setAdvisors(nextAdv);
+    setPortfolios(nextPort);
+    localStorage.setItem(STORAGE_KEYS.ADVISORS, JSON.stringify(nextAdv));
+    localStorage.setItem(STORAGE_KEYS.PORTFOLIOS, JSON.stringify(nextPort));
+    if (user) {
+      deleteAdvisorFromCloud(id);
+      saveUserDataToCloud(nextAdv, transactions, dividends, quotes, nextPort);
+    }
   };
 
   // Portfolio handlers
@@ -403,15 +433,31 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
       id: `port-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       createdAt: new Date().toISOString().split('T')[0],
     };
-    setPortfolios((prev) => [...prev, newPort]);
+    const nextPort = [...portfolios, newPort];
+    setPortfolios(nextPort);
+    localStorage.setItem(STORAGE_KEYS.PORTFOLIOS, JSON.stringify(nextPort));
+    if (user) {
+      saveUserDataToCloud(advisors, transactions, dividends, quotes, nextPort);
+    }
   };
 
   const handleUpdatePortfolio = (updatedPort: AdvisorPortfolio) => {
-    setPortfolios((prev) => prev.map((p) => (p.id === updatedPort.id ? updatedPort : p)));
+    const nextPort = portfolios.map((p) => (p.id === updatedPort.id ? updatedPort : p));
+    setPortfolios(nextPort);
+    localStorage.setItem(STORAGE_KEYS.PORTFOLIOS, JSON.stringify(nextPort));
+    if (user) {
+      saveUserDataToCloud(advisors, transactions, dividends, quotes, nextPort);
+    }
   };
 
   const handleDeletePortfolio = (id: string) => {
-    setPortfolios((prev) => prev.filter((p) => p.id !== id));
+    const nextPort = portfolios.filter((p) => p.id !== id);
+    setPortfolios(nextPort);
+    localStorage.setItem(STORAGE_KEYS.PORTFOLIOS, JSON.stringify(nextPort));
+    if (user) {
+      deletePortfolioFromCloud(id);
+      saveUserDataToCloud(advisors, transactions, dividends, quotes, nextPort);
+    }
   };
 
   const handleSelectAdvisorDetail = (advId: string) => {
@@ -427,6 +473,24 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
   const handleOpenDividendForAdvisor = (advId: string) => {
     setTargetModalAdvisorId(advId);
     setIsDividendModalOpen(true);
+  };
+
+  const handleImportTransactions = (newTx: Transaction[]) => {
+    const nextTx = [...newTx, ...transactions];
+    setTransactions(nextTx);
+    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(nextTx));
+    if (user) {
+      saveUserDataToCloud(advisors, nextTx, dividends, quotes, portfolios);
+    }
+  };
+
+  const handleImportDividends = (newDivs: Dividend[]) => {
+    const nextDiv = [...newDivs, ...dividends];
+    setDividends(nextDiv);
+    localStorage.setItem(STORAGE_KEYS.DIVIDENDS, JSON.stringify(nextDiv));
+    if (user) {
+      saveUserDataToCloud(advisors, transactions, nextDiv, quotes, portfolios);
+    }
   };
 
   const handleUpdateQuotesFromImport = (quotesToUpdate: Record<string, Partial<StockQuote>>) => {
@@ -447,6 +511,10 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
           };
         }
       });
+      localStorage.setItem(STORAGE_KEYS.QUOTES, JSON.stringify(next));
+      if (user) {
+        saveUserDataToCloud(advisors, transactions, dividends, next, portfolios);
+      }
       return next;
     });
   };
@@ -462,6 +530,33 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
       }));
   }, [portfolioMetrics.consolidatedHoldings]);
 
+  const activeTabMeta = {
+    overview: {
+      title: 'Overview & Allocation',
+      subtitle: 'Multi-advisor performance, returns, demat value, and asset allocation breakdown',
+    },
+    advisor_drilldown: {
+      title: 'Advisor Deep Dive',
+      subtitle: 'Individual advisory performance metrics, active holdings, and transaction history',
+    },
+    kite_reconciliation: {
+      title: 'Consolidated Demat Portfolio',
+      subtitle: 'Live unified portfolio across all advisors with multi-advisor overlap detection',
+    },
+    exited_trades: {
+      title: 'Exited Trades & Realized P&L',
+      subtitle: 'Historical closed positions, realized gains & losses, and holding periods',
+    },
+    dividends: {
+      title: 'Dividend Income Tracker',
+      subtitle: 'Corporate dividend payouts, yield on cost, and monthly cashflows received',
+    },
+    tradebook: {
+      title: 'Tradebook & Transaction Ledger',
+      subtitle: 'Chronological transaction logs, buy/sell executions, and rebalancing audit trail',
+    },
+  }[activeTab];
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans antialiased">
       
@@ -471,6 +566,8 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
         grandTotalNetGain={portfolioMetrics.grandTotalNetGain}
         grandTotalNetReturnPct={portfolioMetrics.grandTotalNetReturnPct}
         grandTotalDividends={portfolioMetrics.grandTotalDividends}
+        isSidebarCollapsed={isSidebarCollapsed}
+        onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
         onOpenTradeModal={() => {
           setTargetModalAdvisorId(undefined);
           setIsTradeModalOpen(true);
@@ -487,104 +584,131 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
         quotes={quotes}
       />
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      {/* App Body: Collapsible Left Sidebar + Main Content */}
+      <div className="flex-1 flex min-h-[calc(100vh-61px)]">
+        {/* Left Side Navigation */}
+        <NavigationTabs
+          activeTab={activeTab}
+          onChangeTab={setActiveTab}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
+          advisorCount={advisors.length}
+          overlapCount={overlapStockList.length}
+          exitedTradesCount={portfolioMetrics.allExitedTrades.length}
+          dividendsCount={dividends.length}
+          transactionsCount={transactions.length}
+          onOpenTradeModal={() => {
+            setTargetModalAdvisorId(undefined);
+            setIsTradeModalOpen(true);
+          }}
+          onOpenDividendModal={() => {
+            setTargetModalAdvisorId(undefined);
+            setIsDividendModalOpen(true);
+          }}
+          onOpenAdvisorModal={() => setIsAdvisorModalOpen(true)}
+          onOpenImportExportModal={() => setIsImportExportModalOpen(true)}
+        />
 
-        {/* Navigation Tabs and Quick Filters */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <NavigationTabs
-            activeTab={activeTab}
-            onChangeTab={setActiveTab}
-            advisorCount={advisors.length}
-            overlapCount={overlapStockList.length}
-            exitedTradesCount={portfolioMetrics.allExitedTrades.length}
-            dividendsCount={dividends.length}
-            transactionsCount={transactions.length}
-          />
+        {/* Main Section */}
+        <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 py-6 space-y-6 max-w-[1600px] mx-auto w-full">
 
-          <TimeframeBar
-            currentFilter={timeframe}
-            timeframe={timeframe}
-            onFilterChange={setTimeframe}
-            onSelectTimeframe={setTimeframe}
-          />
-        </div>
+          {/* Main Section Header / View Title & Aligned Timeframe Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-3 border-b border-slate-200/80">
+            <div>
+              <h2 className="text-xl font-bold tracking-tight text-slate-900">
+                {activeTabMeta.title}
+              </h2>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                {activeTabMeta.subtitle}
+              </p>
+            </div>
 
-        {/* View Switcher based on Active Navigation Tab */}
-        {activeTab === 'overview' && (
-          <OverviewView
-            advisorPerformances={portfolioMetrics.advisorPerformances}
-            grandTotalInvested={portfolioMetrics.grandTotalInvested}
-            grandTotalCurrentValue={portfolioMetrics.grandTotalCurrentValue}
-            grandTotalUnrealizedPnL={portfolioMetrics.grandTotalUnrealizedPnL}
-            grandTotalRealizedPnL={portfolioMetrics.grandTotalRealizedPnL}
-            grandTotalDividends={portfolioMetrics.grandTotalDividends}
-            grandTotalNetGain={portfolioMetrics.grandTotalNetGain}
-            grandTotalNetReturnPct={portfolioMetrics.grandTotalNetReturnPct}
-            overallXIRR={portfolioMetrics.overallXIRR}
-            stockOverlaps={overlapStockList}
-            timeframe={timeframe}
-            onSelectAdvisor={handleSelectAdvisorDetail}
-            onNavigateToOverlap={() => setActiveTab('kite_reconciliation')}
-            onNavigateToExitedTrades={() => setActiveTab('exited_trades')}
-            onOpenAdvisorModal={() => setIsAdvisorModalOpen(true)}
-            onOpenImportExportModal={() => setIsImportExportModalOpen(true)}
-          />
-        )}
+            <div className="shrink-0">
+              <TimeframeBar
+                currentFilter={timeframe}
+                timeframe={timeframe}
+                onFilterChange={setTimeframe}
+                onSelectTimeframe={setTimeframe}
+              />
+            </div>
+          </div>
 
-        {activeTab === 'advisor_drilldown' && (
-          <AdvisorDetailView
-            advisorPerformances={portfolioMetrics.advisorPerformances}
-            selectedAdvisorId={selectedAdvisorId}
-            onSelectAdvisorId={setSelectedAdvisorId}
-            timeframe={timeframe}
-            onAddTradeForAdvisor={handleOpenTradeForAdvisor}
-            onAddDividendForAdvisor={handleOpenDividendForAdvisor}
-          />
-        )}
+          {/* View Switcher based on Active Navigation Tab */}
+          {activeTab === 'overview' && (
+            <OverviewView
+              advisorPerformances={portfolioMetrics.advisorPerformances}
+              grandTotalInvested={portfolioMetrics.grandTotalInvested}
+              grandTotalCurrentValue={portfolioMetrics.grandTotalCurrentValue}
+              grandTotalUnrealizedPnL={portfolioMetrics.grandTotalUnrealizedPnL}
+              grandTotalRealizedPnL={portfolioMetrics.grandTotalRealizedPnL}
+              grandTotalDividends={portfolioMetrics.grandTotalDividends}
+              grandTotalNetGain={portfolioMetrics.grandTotalNetGain}
+              grandTotalNetReturnPct={portfolioMetrics.grandTotalNetReturnPct}
+              overallXIRR={portfolioMetrics.overallXIRR}
+              stockOverlaps={overlapStockList}
+              timeframe={timeframe}
+              onSelectAdvisor={handleSelectAdvisorDetail}
+              onNavigateToOverlap={() => setActiveTab('kite_reconciliation')}
+              onNavigateToExitedTrades={() => setActiveTab('exited_trades')}
+              onOpenAdvisorModal={() => setIsAdvisorModalOpen(true)}
+              onOpenImportExportModal={() => setIsImportExportModalOpen(true)}
+            />
+          )}
 
-        {activeTab === 'kite_reconciliation' && (
-          <ConsolidatedKiteView
-            consolidatedHoldings={portfolioMetrics.consolidatedHoldings}
-            onSelectAdvisor={handleSelectAdvisorDetail}
-          />
-        )}
+          {activeTab === 'advisor_drilldown' && (
+            <AdvisorDetailView
+              advisorPerformances={portfolioMetrics.advisorPerformances}
+              selectedAdvisorId={selectedAdvisorId}
+              onSelectAdvisorId={setSelectedAdvisorId}
+              timeframe={timeframe}
+              onAddTradeForAdvisor={handleOpenTradeForAdvisor}
+              onAddDividendForAdvisor={handleOpenDividendForAdvisor}
+            />
+          )}
 
-        {activeTab === 'exited_trades' && (
-          <ExitedTradesView
-            allExitedTrades={portfolioMetrics.allExitedTrades}
-            advisors={advisors}
-            portfolios={portfolios}
-          />
-        )}
+          {activeTab === 'kite_reconciliation' && (
+            <ConsolidatedKiteView
+              consolidatedHoldings={portfolioMetrics.consolidatedHoldings}
+              onSelectAdvisor={handleSelectAdvisorDetail}
+            />
+          )}
 
-        {activeTab === 'dividends' && (
-          <DividendsView
-            dividends={dividends}
-            advisors={advisors}
-            grandTotalInvested={portfolioMetrics.grandTotalInvested}
-            onOpenAddDividendModal={() => {
-              setTargetModalAdvisorId(undefined);
-              setIsDividendModalOpen(true);
-            }}
-            onDeleteDividend={handleDeleteDividend}
-          />
-        )}
+          {activeTab === 'exited_trades' && (
+            <ExitedTradesView
+              allExitedTrades={portfolioMetrics.allExitedTrades}
+              advisors={advisors}
+              portfolios={portfolios}
+            />
+          )}
 
-        {activeTab === 'tradebook' && (
-          <TradeLedgerView
-            transactions={transactions}
-            advisors={advisors}
-            portfolios={portfolios}
-            onOpenTradeModal={() => {
-              setTargetModalAdvisorId(undefined);
-              setIsTradeModalOpen(true);
-            }}
-            onDeleteTransaction={handleDeleteTransaction}
-          />
-        )}
+          {activeTab === 'dividends' && (
+            <DividendsView
+              dividends={dividends}
+              advisors={advisors}
+              grandTotalInvested={portfolioMetrics.grandTotalInvested}
+              onOpenAddDividendModal={() => {
+                setTargetModalAdvisorId(undefined);
+                setIsDividendModalOpen(true);
+              }}
+              onDeleteDividend={handleDeleteDividend}
+            />
+          )}
 
-      </main>
+          {activeTab === 'tradebook' && (
+            <TradeLedgerView
+              transactions={transactions}
+              advisors={advisors}
+              portfolios={portfolios}
+              onOpenTradeModal={() => {
+                setTargetModalAdvisorId(undefined);
+                setIsTradeModalOpen(true);
+              }}
+              onDeleteTransaction={handleDeleteTransaction}
+            />
+          )}
+
+        </main>
+      </div>
 
       {/* Modals */}
       <TradeModal
@@ -626,8 +750,8 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
         transactions={transactions}
         dividends={dividends}
         quotes={quotes}
-        onImportTransactions={(newTx) => setTransactions((prev) => [...newTx, ...prev])}
-        onImportDividends={(newDivs) => setDividends((prev) => [...newDivs, ...prev])}
+        onImportTransactions={handleImportTransactions}
+        onImportDividends={handleImportDividends}
         onUpdateQuotes={handleUpdateQuotesFromImport}
         onResetAllData={handleResetAllData}
       />

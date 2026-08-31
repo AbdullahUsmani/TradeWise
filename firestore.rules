@@ -9,36 +9,47 @@ service cloud.firestore {
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
+
+    // Default deny for unmatched collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Connection test document
+    match /test/connection {
+      allow read: if true;
+      allow write: if false;
+    }
     
-    // User root document & all subcollections
+    // User root document & all user subcollections
     match /users/{userId} {
       allow read, write: if isOwner(userId);
-      
-      match /advisors/{advisorId} {
-        allow read, write: if isOwner(userId);
-      }
-      
-      match /transactions/{txId} {
-        allow read, write: if isOwner(userId);
-      }
-      
-      match /dividends/{dividendId} {
-        allow read, write: if isOwner(userId);
-      }
-      
-      match /quotes/{quoteId} {
-        allow read, write: if isOwner(userId);
-      }
       
       match /{allChildren=**} {
         allow read, write: if isOwner(userId);
       }
     }
+
+    // Root collections for backwards compatibility
+    match /advisors/{advisorId} {
+      allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || !('userId' in resource.data));
+    }
+
+    match /portfolios/{portfolioId} {
+      allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || !('userId' in resource.data));
+    }
     
-    // Global fallback rule for demo / guest fallback collections
-    match /public_demo/{docId} {
-      allow read: if true;
-      allow write: if false;
+    match /transactions/{txId} {
+      allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || !('userId' in resource.data));
+    }
+    
+    match /dividends/{dividendId} {
+      allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || !('userId' in resource.data));
+    }
+    
+    match /quotes/{quoteId} {
+      allow read, write: if isAuthenticated();
     }
   }
 }
+

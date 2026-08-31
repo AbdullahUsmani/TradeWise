@@ -462,16 +462,15 @@ export const AdvisorManagerModal: React.FC<AdvisorManagerModalProps> = ({
                           >
                             Edit
                           </button>
-                          {advisors.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => onDeleteAdvisor(adv.id)}
-                              className="p-1 text-slate-400 hover:text-rose-600 rounded transition"
-                              title="Delete advisor"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => onDeleteAdvisor(adv.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Delete advisor"
+                            aria-label="Delete advisor"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
 
@@ -530,10 +529,11 @@ export const AdvisorManagerModal: React.FC<AdvisorManagerModalProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => onDeletePortfolio(port.id)}
-                                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition"
+                                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                                         title="Delete portfolio"
+                                        aria-label="Delete portfolio"
                                       >
-                                        <Trash2 className="w-3 h-3" />
+                                        <Trash2 className="w-3.5 h-3.5" />
                                       </button>
                                     </div>
                                   </div>
@@ -728,8 +728,9 @@ export const AdvisorManagerModal: React.FC<AdvisorManagerModalProps> = ({
                         <button
                           type="button"
                           onClick={() => onDeletePortfolio(port.id)}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           title="Delete portfolio"
+                          aria-label="Delete portfolio"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>

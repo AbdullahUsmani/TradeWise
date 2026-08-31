@@ -286,9 +286,11 @@ export const DividendsView: React.FC<DividendsViewProps> = ({
 
                       <td className="py-3.5 px-4 text-center">
                         <button
+                          type="button"
                           onClick={() => onDeleteDividend(div.id)}
-                          className="p-1 text-slate-400 hover:text-rose-600 transition rounded"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           title="Delete dividend entry"
+                          aria-label="Delete dividend entry"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
