@@ -126,23 +126,43 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
   });
 
   // Reset all portfolio data to 0
-  const handleResetAllData = () => {
+  const handleResetAllData = async () => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    lastSavedSnapshotRef.current = JSON.stringify({ a: [], p: [], t: [], d: [] });
+    
     setAdvisors([]);
     setPortfolios([]);
     setTransactions([]);
     setDividends([]);
     setQuotes({});
     setSelectedAdvisorId('');
-    localStorage.removeItem(STORAGE_KEYS.ADVISORS);
-    localStorage.removeItem(STORAGE_KEYS.PORTFOLIOS);
-    localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
-    localStorage.removeItem(STORAGE_KEYS.DIVIDENDS);
-    localStorage.removeItem(STORAGE_KEYS.QUOTES);
-    localStorage.removeItem('multi_advisor_portfolio_advisors_v1');
-    localStorage.removeItem('multi_advisor_portfolio_transactions_v1');
-    localStorage.removeItem('multi_advisor_portfolio_dividends_v1');
-    localStorage.removeItem('multi_advisor_portfolio_quotes_v1');
-    clearAllUserData();
+
+    const storageKeysToClear = [
+      STORAGE_KEYS.ADVISORS,
+      STORAGE_KEYS.PORTFOLIOS,
+      STORAGE_KEYS.TRANSACTIONS,
+      STORAGE_KEYS.DIVIDENDS,
+      STORAGE_KEYS.QUOTES,
+      'tradewise_advisors_v1',
+      'tradewise_portfolios_v1',
+      'tradewise_transactions_v1',
+      'tradewise_dividends_v1',
+      'tradewise_quotes_v1',
+      'multi_advisor_portfolio_advisors_v1',
+      'multi_advisor_portfolio_portfolios_v1',
+      'multi_advisor_portfolio_transactions_v1',
+      'multi_advisor_portfolio_dividends_v1',
+      'multi_advisor_portfolio_quotes_v1',
+    ];
+    storageKeysToClear.forEach((key) => {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {}
+    });
+
+    await clearAllUserData();
   };
 
   // Sync state when cloud data is loaded from Firestore for logged in user
