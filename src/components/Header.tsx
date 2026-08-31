@@ -7,11 +7,8 @@ import {
   FileSpreadsheet,
   RefreshCw,
   Layers,
-  Cloud,
-  User,
 } from 'lucide-react';
 import { formatINR } from '../utils/portfolioMath';
-import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
   grandTotalCurrentValue?: number;
@@ -22,7 +19,6 @@ interface HeaderProps {
   onOpenDividendModal: () => void;
   onOpenAdvisorModal: () => void;
   onOpenImportExportModal: () => void;
-  onOpenAuthModal: () => void;
   onRefreshQuotes: () => void;
   isRefreshing: boolean;
   quotes?: Record<string, any>;
@@ -37,13 +33,11 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenDividendModal,
   onOpenAdvisorModal,
   onOpenImportExportModal,
-  onOpenAuthModal,
   onRefreshQuotes,
   isRefreshing,
 }) => {
   const isPositive = (grandTotalNetGain ?? 0) >= 0;
   const safeNetReturnPct = grandTotalNetReturnPct ?? 0;
-  const { user } = useAuth();
 
   return (
     <header className="bg-white border-b border-slate-200/90 sticky top-0 z-30 shadow-xs">
@@ -144,29 +138,6 @@ export const Header: React.FC<HeaderProps> = ({
               <FileSpreadsheet className="w-4 h-4" />
             </button>
 
-            {/* Cloud Auth / Account Sync Button */}
-            <button
-              id="btn-open-auth-modal"
-              onClick={onOpenAuthModal}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition border shadow-xs ${
-                user
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-              }`}
-              title={user ? `Signed in as ${user.email} (Firestore Active)` : 'Sign in to sync data to Cloud Firestore'}
-            >
-              {user ? (
-                <>
-                  <Cloud className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="max-w-[80px] truncate">{user.displayName || user.email?.split('@')[0]}</span>
-                </>
-              ) : (
-                <>
-                  <User className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Cloud Sign In</span>
-                </>
-              )}
-            </button>
 
           </div>
 

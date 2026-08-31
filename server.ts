@@ -2,14 +2,149 @@ import express, { Request, Response } from "express";
 import path from "path";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
+import Database from "better-sqlite3";
 import { createServer as createViteServer } from "vite";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
+const dbPath = path.join(process.cwd(), "tradewise.db");
+const db = new Database(dbPath);
 
 app.use(express.json({ limit: "10mb" }));
+
+const ensureDatabase = () => {
+  db.pragma("journal_mode = WAL");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS portfolio_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      advisors TEXT NOT NULL DEFAULT '[]',
+      portfolios TEXT NOT NULL DEFAULT '[]',
+      transactions TEXT NOT NULL DEFAULT '[]',
+      dividends TEXT NOT NULL DEFAULT '[]',
+      quotes TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  const row = db.prepare(`SELECT id FROM portfolio_state WHERE id = 1`).get();
+  if (!row) {
+    db.prepare(
+      `INSERT INTO portfolio_state (id) VALUES (1)`
+    ).run();
+  }
+};
+
+const parseJson = <T>(value: string | null, fallback: T): T => {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch (error) {
+    console.warn("Failed to parse SQLite portfolio JSON:", error);
+    return fallback;
+  }
+};
+
+const getPortfolioState = () => {
+  const row = db.prepare(`SELECT advisors, portfolios, transactions, dividends, quotes, updated_at FROM portfolio_state WHERE id = 1`).get() as {
+    advisors: string;
+    portfolios: string;
+    transactions: string;
+    dividends: string;
+    quotes: string;
+    updated_at: string;
+  } | undefined;
+
+  if (!row) {
+    return {
+      advisors: [],
+      portfolios: [],
+      transactions: [],
+      dividends: [],
+      quotes: {},
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  return {
+    advisors: parseJson(row.advisors, []),
+    portfolios: parseJson(row.portfolios, []),
+    transactions: parseJson(row.transactions, []),
+    dividends: parseJson(row.dividends, []),
+    quotes: parseJson(row.quotes, {}),
+    updated_at: row.updated_at,
+  };
+};
+
+const savePortfolioState = (payload: any) => {
+  const normalized = {
+    advisors: Array.isArray(payload?.advisors) ? payload.advisors : [],
+    portfolios: Array.isArray(payload?.portfolios) ? payload.portfolios : [],
+    transactions: Array.isArray(payload?.transactions) ? payload.transactions : [],
+    dividends: Array.isArray(payload?.dividends) ? payload.dividends : [],
+    quotes: payload?.quotes && typeof payload.quotes === "object" && !Array.isArray(payload.quotes) ? payload.quotes : {},
+  };
+
+  db.prepare(
+    `UPDATE portfolio_state
+     SET advisors = ?, portfolios = ?, transactions = ?, dividends = ?, quotes = ?, updated_at = datetime('now')
+     WHERE id = 1`
+  ).run(
+    JSON.stringify(normalized.advisors),
+    JSON.stringify(normalized.portfolios),
+    JSON.stringify(normalized.transactions),
+    JSON.stringify(normalized.dividends),
+    JSON.stringify(normalized.quotes)
+  );
+
+  return {
+    ...normalized,
+    updated_at: new Date().toISOString(),
+  };
+};
+
+const resetPortfolioState = () => {
+  db.prepare(
+    `UPDATE portfolio_state
+     SET advisors = '[]', portfolios = '[]', transactions = '[]', dividends = '[]', quotes = '{}', updated_at = datetime('now')
+     WHERE id = 1`
+  ).run();
+
+  return {
+    advisors: [],
+    portfolios: [],
+    transactions: [],
+    dividends: [],
+    quotes: {},
+    updated_at: new Date().toISOString(),
+  };
+};
+
+ensureDatabase();
+
+app.get("/api/portfolio", (_req: Request, res: Response) => {
+  res.json(getPortfolioState());
+});
+
+app.put("/api/portfolio", (req: Request, res: Response) => {
+  try {
+    const result = savePortfolioState(req.body || {});
+    res.json(result);
+  } catch (error: any) {
+    console.error("Portfolio save failed:", error);
+    res.status(500).json({ error: error?.message || "Failed to persist portfolio data." });
+  }
+});
+
+app.post("/api/portfolio/reset", (_req: Request, res: Response) => {
+  try {
+    res.json(resetPortfolioState());
+  } catch (error: any) {
+    console.error("Portfolio reset failed:", error);
+    res.status(500).json({ error: error?.message || "Failed to reset portfolio data." });
+  }
+});
 
 // Lazy Google GenAI Client
 let aiClient: GoogleGenAI | null = null;
