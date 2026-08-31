@@ -3,14 +3,8 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-const isLocalhost =
-  typeof window !== 'undefined' && ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-
-const resolvedFirebaseConfig = isLocalhost
-  ? { ...firebaseConfig, authDomain: 'localhost' }
-  : firebaseConfig;
-
-const app = !getApps().length ? initializeApp(resolvedFirebaseConfig) : getApp();
+export { firebaseConfig };
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();

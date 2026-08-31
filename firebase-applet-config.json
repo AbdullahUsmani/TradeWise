@@ -1,12 +1,12 @@
 {
-  "projectId": "reliable-reactor-vcjpc",
-  "appId": "1:154556301488:web:e99457da67a2e39cb83b75",
-  "apiKey": "AIzaSyCfLk7J_rsGWynSt6C9x1bt-OthPfdvEyw",
-  "authDomain": "reliable-reactor-vcjpc.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-multiadvisorport-569d5ae0-0051-4e93-95c9-206163d205ac",
-  "storageBucket": "reliable-reactor-vcjpc.firebasestorage.app",
-  "messagingSenderId": "154556301488",
-  "measurementId": "",
-  "oAuthClientId": "154556301488-mk2rmvslgbj50uckgpahgt07ea9o0p84.apps.googleusercontent.com",
+  "projectId": "tradewise-abpn77ah",
+  "appId": "1:1067997961070:web:9a729a218c49ffcd517f7f",
+  "apiKey": "AIzaSyBx2HzWwbI2z-4hXDA1M5373GA7DDwvzTA",
+  "authDomain": "tradewise-abpn77ah.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "tradewise-abpn77ah.firebasestorage.app",
+  "messagingSenderId": "1067997961070",
+  "measurementId": "G-T5N9NPZP91",
+  "oAuthClientId": "1067997961070-61bnfaau4ev51h7b6r4eagotctcndmc2.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

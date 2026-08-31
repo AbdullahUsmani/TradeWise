@@ -10,41 +10,60 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Default deny for unmatched collections
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Connection test document
+    // Connection test document for health checks
     match /test/connection {
       allow read: if true;
       allow write: if false;
     }
     
-    // User root document & all user subcollections
+    // User root profile & consolidated / subcollections
     match /users/{userId} {
       allow read, write: if isOwner(userId);
       
-      match /{allChildren=**} {
+      match /portfolio/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /advisors/{advisorId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /portfolios/{portfolioId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /transactions/{transactionId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /dividends/{dividendId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /quotes/{quoteId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /{allSubcollections=**} {
         allow read, write: if isOwner(userId);
       }
     }
 
-    // Root collections for backwards compatibility
+    // Root collections for compatibility
     match /advisors/{advisorId} {
-      allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || !('userId' in resource.data));
+      allow read, write: if isAuthenticated();
     }
 
     match /portfolios/{portfolioId} {
-      allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || !('userId' in resource.data));
+      allow read, write: if isAuthenticated();
     }
     
     match /transactions/{txId} {
-      allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || !('userId' in resource.data));
+      allow read, write: if isAuthenticated();
     }
     
     match /dividends/{dividendId} {
-      allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || !('userId' in resource.data));
+      allow read, write: if isAuthenticated();
     }
     
     match /quotes/{quoteId} {
@@ -52,4 +71,5 @@ service cloud.firestore {
     }
   }
 }
+
 
