@@ -27,8 +27,6 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, allowClose = true, onResetAllData }) => {
-  if (!isOpen) return null;
-
   const {
     user,
     signInWithGoogle,
@@ -133,6 +131,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, allowClos
       setErrorMsg(err.message);
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">

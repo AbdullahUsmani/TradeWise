@@ -55,7 +55,34 @@ export const AdvisorDetailView: React.FC<AdvisorDetailViewProps> = ({
   const [activeTabSection, setActiveTabSection] = useState<'holdings' | 'portfolios' | 'allocation' | 'exits' | 'dividends'>('holdings');
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>('ALL');
 
-  if (!currentPerf) {
+  const {
+    advisor,
+    portfolios = [],
+    portfolioPerformances = [],
+    activeHoldings = [],
+    exitedTrades = [],
+    dividends = [],
+  } = currentPerf || {};
+
+  // Filtered dataset based on selected portfolio
+  const filteredHoldings = useMemo(() => {
+    if (!activeHoldings) return [];
+    if (selectedPortfolioId === 'ALL') return activeHoldings;
+    return activeHoldings.filter((h) => h.portfolioId === selectedPortfolioId);
+  }, [activeHoldings, selectedPortfolioId]);
+
+  const filteredExits = useMemo(() => {
+    if (!exitedTrades) return [];
+    if (selectedPortfolioId === 'ALL') return exitedTrades;
+    return exitedTrades.filter((e) => e.portfolioId === selectedPortfolioId);
+  }, [exitedTrades, selectedPortfolioId]);
+
+  const activePortPerf = useMemo(() => {
+    if (!portfolioPerformances || selectedPortfolioId === 'ALL') return null;
+    return portfolioPerformances.find((p) => p.portfolio.id === selectedPortfolioId) || null;
+  }, [portfolioPerformances, selectedPortfolioId]);
+
+  if (!currentPerf || !advisor) {
     return (
       <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center max-w-lg mx-auto my-8 shadow-xs">
         <Building className="w-10 h-10 text-slate-400 mx-auto mb-3" />
@@ -66,31 +93,6 @@ export const AdvisorDetailView: React.FC<AdvisorDetailViewProps> = ({
       </div>
     );
   }
-
-  const {
-    advisor,
-    portfolios = [],
-    portfolioPerformances = [],
-    activeHoldings = [],
-    exitedTrades = [],
-    dividends = [],
-  } = currentPerf;
-
-  // Filtered dataset based on selected portfolio
-  const filteredHoldings = useMemo(() => {
-    if (selectedPortfolioId === 'ALL') return activeHoldings;
-    return activeHoldings.filter((h) => h.portfolioId === selectedPortfolioId);
-  }, [activeHoldings, selectedPortfolioId]);
-
-  const filteredExits = useMemo(() => {
-    if (selectedPortfolioId === 'ALL') return exitedTrades;
-    return exitedTrades.filter((e) => e.portfolioId === selectedPortfolioId);
-  }, [exitedTrades, selectedPortfolioId]);
-
-  const activePortPerf = useMemo(() => {
-    if (selectedPortfolioId === 'ALL') return null;
-    return portfolioPerformances.find((p) => p.portfolio.id === selectedPortfolioId) || null;
-  }, [portfolioPerformances, selectedPortfolioId]);
 
   // Derived metrics for current view (overall or specific portfolio)
   const displayInvested = activePortPerf ? activePortPerf.totalInvestedActive : currentPerf.totalInvestedActive;

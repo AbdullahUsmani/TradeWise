@@ -192,29 +192,6 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
   const [targetModalAdvisorId, setTargetModalAdvisorId] = useState<string | undefined>(undefined);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-100 text-slate-900 flex items-center justify-center">
-        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
-          <div className="rounded-xl bg-slate-900 p-2 text-white">
-            <Layers className="h-4 w-4 text-indigo-400" />
-          </div>
-          <span className="text-sm font-medium text-slate-700">Loading your portfolio...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <AuthModal isOpen={true} onClose={() => {}} allowClose={false} onResetAllData={handleResetAllData} />
-        </div>
-      </div>
-    );
-  }
-
   // Local storage persistence
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.ADVISORS, JSON.stringify(advisors));
@@ -290,6 +267,18 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
   const portfolioMetrics = useMemo(() => {
     return computePortfolioMetrics(advisors, transactions, dividends, quotes, timeframe, portfolios);
   }, [advisors, transactions, dividends, quotes, timeframe, portfolios]);
+
+  // Overlap stock list
+  const overlapStockList = useMemo(() => {
+    return portfolioMetrics.consolidatedHoldings
+      .filter((h) => h.isMultiAdvisor)
+      .map((h) => ({
+        symbol: h.symbol,
+        name: h.name,
+        advisorCount: h.advisorBuckets.length,
+        advisors: h.advisorBuckets.map((b) => b.advisorName),
+      }));
+  }, [portfolioMetrics.consolidatedHoldings]);
 
   // Stock price refresh
   const handleRefreshQuotes = () => {
@@ -519,17 +508,6 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
     });
   };
 
-  const overlapStockList = useMemo(() => {
-    return portfolioMetrics.consolidatedHoldings
-      .filter((h) => h.isMultiAdvisor)
-      .map((h) => ({
-        symbol: h.symbol,
-        name: h.name,
-        advisorCount: h.advisorBuckets.length,
-        advisors: h.advisorBuckets.map((b) => b.advisorName),
-      }));
-  }, [portfolioMetrics.consolidatedHoldings]);
-
   const activeTabMeta = {
     overview: {
       title: 'Overview & Allocation',
@@ -556,6 +534,29 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
       subtitle: 'Chronological transaction logs, buy/sell executions, and rebalancing audit trail',
     },
   }[activeTab];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-100 text-slate-900 flex items-center justify-center">
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
+          <div className="rounded-xl bg-slate-900 p-2 text-white">
+            <Layers className="h-4 w-4 text-indigo-400" />
+          </div>
+          <span className="text-sm font-medium text-slate-700">Loading your portfolio...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <AuthModal isOpen={true} onClose={() => {}} allowClose={false} onResetAllData={handleResetAllData} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans antialiased">

@@ -20,8 +20,6 @@ export const DividendModal: React.FC<DividendModalProps> = ({
   defaultAdvisorId,
   onSaveDividend,
 }) => {
-  if (!isOpen) return null;
-
   const [advisorId, setAdvisorId] = useState(defaultAdvisorId || advisors[0]?.id || '');
   const [symbol, setSymbol] = useState('HDFCBANK');
   const [name, setName] = useState('HDFC Bank Ltd');
@@ -61,6 +59,8 @@ export const DividendModal: React.FC<DividendModalProps> = ({
 
     onClose();
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">

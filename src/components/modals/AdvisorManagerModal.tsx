@@ -50,8 +50,6 @@ export const AdvisorManagerModal: React.FC<AdvisorManagerModalProps> = ({
   onUpdatePortfolio,
   onDeletePortfolio,
 }) => {
-  if (!isOpen) return null;
-
   // Active subview: 'advisors' or 'portfolios'
   const [activeTab, setActiveTab] = useState<'advisors' | 'portfolios'>('advisors');
 
@@ -203,6 +201,8 @@ export const AdvisorManagerModal: React.FC<AdvisorManagerModalProps> = ({
     setIsCreatingPortfolio(false);
     setEditingPortfolioId(null);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">

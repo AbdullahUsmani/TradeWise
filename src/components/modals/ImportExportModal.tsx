@@ -37,8 +37,6 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   onUpdateQuotes,
   onResetAllData,
 }) => {
-  if (!isOpen) return null;
-
   const [activeTab, setActiveTab] = useState<'zerodha' | 'export'>('zerodha');
   
   // Zerodha CSV Upload State
@@ -179,6 +177,8 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">

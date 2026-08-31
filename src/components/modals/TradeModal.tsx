@@ -24,8 +24,6 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   defaultPortfolioId,
   onSaveTrade,
 }) => {
-  if (!isOpen) return null;
-
   const [advisorId, setAdvisorId] = useState(defaultAdvisorId || advisors[0]?.id || '');
   const [portfolioId, setPortfolioId] = useState<string>(defaultPortfolioId || '');
   const [type, setType] = useState<TransactionType>('BUY');
@@ -103,6 +101,8 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   };
 
   const totalEstimate = quantity * price + (type === 'BUY' ? Number(charges) : -Number(charges));
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
