@@ -24,6 +24,7 @@ import { DividendModal } from './components/modals/DividendModal';
 import { AdvisorManagerModal } from './components/modals/AdvisorManagerModal';
 import { ImportExportModal } from './components/modals/ImportExportModal';
 import { AuthModal } from './components/modals/AuthModal';
+import { DocumentationModal } from './components/modals/DocumentationModal';
 
 const STORAGE_KEYS = {
   ADVISORS: 'tradewise_advisors_v1',
@@ -201,6 +202,7 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
   const [isDividendModalOpen, setIsDividendModalOpen] = useState(false);
   const [isAdvisorModalOpen, setIsAdvisorModalOpen] = useState(false);
   const [isImportExportModalOpen, setIsImportExportModalOpen] = useState(false);
+  const [isDocModalOpen, setIsDocModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [targetModalAdvisorId, setTargetModalAdvisorId] = useState<string | undefined>(undefined);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -592,6 +594,7 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
         }}
         onOpenAdvisorModal={() => setIsAdvisorModalOpen(true)}
         onOpenImportExportModal={() => setIsImportExportModalOpen(true)}
+        onOpenDocModal={() => setIsDocModalOpen(true)}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onRefreshQuotes={handleRefreshQuotes}
         isRefreshing={isRefreshing}
@@ -621,6 +624,7 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
           }}
           onOpenAdvisorModal={() => setIsAdvisorModalOpen(true)}
           onOpenImportExportModal={() => setIsImportExportModalOpen(true)}
+          onOpenDocModal={() => setIsDocModalOpen(true)}
         />
 
         {/* Main Section */}
@@ -774,6 +778,11 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         onResetAllData={handleResetAllData}
+      />
+
+      <DocumentationModal
+        isOpen={isDocModalOpen}
+        onClose={() => setIsDocModalOpen(false)}
       />
 
     </div>

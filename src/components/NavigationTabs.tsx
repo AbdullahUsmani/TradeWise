@@ -13,6 +13,7 @@ import {
   PlusCircle,
   Users,
   FileSpreadsheet,
+  BookOpen,
 } from 'lucide-react';
 
 export type ActiveTab =
@@ -38,6 +39,7 @@ interface NavigationTabsProps {
   onOpenDividendModal?: () => void;
   onOpenAdvisorModal?: () => void;
   onOpenImportExportModal?: () => void;
+  onOpenDocModal?: () => void;
 }
 
 export const NavigationTabs: React.FC<NavigationTabsProps> = ({
@@ -54,6 +56,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   onOpenDividendModal,
   onOpenAdvisorModal,
   onOpenImportExportModal,
+  onOpenDocModal,
 }) => {
   const handleTabClick = (tab: ActiveTab) => {
     if (onTabChange) onTabChange(tab);
@@ -284,6 +287,21 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                 >
                   <FileSpreadsheet className="w-4 h-4 text-slate-500 shrink-0" />
                   {!isCollapsed && <span>Import / Export</span>}
+                </button>
+              )}
+
+              {onOpenDocModal && (
+                <button
+                  type="button"
+                  id="btn-open-doc-modal-sidebar"
+                  onClick={onOpenDocModal}
+                  title="System Guide & Business Analyst Documentation"
+                  className={`flex items-center gap-2 rounded-xl text-xs font-semibold text-indigo-700 hover:bg-indigo-50 transition-colors ${
+                    isCollapsed ? 'p-2 justify-center' : 'px-3 py-2'
+                  }`}
+                >
+                  <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
+                  {!isCollapsed && <span>System Guide</span>}
                 </button>
               )}
             </div>

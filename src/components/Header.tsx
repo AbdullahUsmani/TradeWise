@@ -10,6 +10,7 @@ import {
   User,
   PanelLeftClose,
   PanelLeftOpen,
+  BookOpen,
 } from 'lucide-react';
 import { formatINR } from '../utils/portfolioMath';
 import { useAuth } from '../context/AuthContext';
@@ -25,6 +26,7 @@ interface HeaderProps {
   onOpenDividendModal: () => void;
   onOpenAdvisorModal: () => void;
   onOpenImportExportModal?: () => void;
+  onOpenDocModal?: () => void;
   onOpenAuthModal: () => void;
   onRefreshQuotes: () => void;
   isRefreshing: boolean;
@@ -42,6 +44,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenDividendModal,
   onOpenAdvisorModal,
   onOpenImportExportModal,
+  onOpenDocModal,
   onOpenAuthModal,
   onRefreshQuotes,
   isRefreshing,
@@ -108,6 +111,19 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-indigo-600' : ''}`} />
             </button>
+
+            {/* System Docs & BA Guide */}
+            {onOpenDocModal && (
+              <button
+                id="btn-open-doc-modal"
+                onClick={onOpenDocModal}
+                title="System Guide & Business Analyst Documentation"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-indigo-700 bg-slate-100 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-200 hover:border-indigo-200"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="hidden sm:inline">System Guide</span>
+              </button>
+            )}
 
             {/* Cloud Auth / Account Sync Button */}
             <button

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   X,
   Upload,
@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   AlertCircle,
   FileText,
+  CopyX,
 } from 'lucide-react';
 import { Advisor, Dividend, StockQuote, Transaction } from '../../types/portfolio';
 import { parseCSVFile } from '../../utils/zerodhaImporter';
@@ -48,6 +49,45 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   const [parsedPreview, setParsedPreview] = useState<any | null>(null);
   const [customTag, setCustomTag] = useState<string>('Zerodha Import');
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [skipDuplicates, setSkipDuplicates] = useState<boolean>(true);
+
+  // Evaluate duplicate trades against existing transactions ledger
+  const { annotatedTransactions, duplicateCount, netNewCount } = useMemo(() => {
+    if (!parsedPreview || !parsedPreview.transactions) {
+      return { annotatedTransactions: [], duplicateCount: 0, netNewCount: 0 };
+    }
+
+    const targetAdv = selectedAdvisorId || advisors[0]?.id || 'adv-1';
+
+    let dupes = 0;
+    const annotated = parsedPreview.transactions.map((tx: Transaction) => {
+      // Check if existing trade matches
+      const isDuplicate = transactions.some((existing) => {
+        if (existing.advisorId !== targetAdv) return false;
+        if (existing.symbol.toUpperCase() !== tx.symbol.toUpperCase()) return false;
+        if (existing.type !== tx.type) return false;
+        if (existing.date !== tx.date) return false;
+        const qtyDiff = Math.abs(existing.quantity - tx.quantity);
+        const priceDiff = Math.abs(existing.price - tx.price);
+        return qtyDiff < 0.0001 && priceDiff < 0.02;
+      });
+
+      if (isDuplicate) {
+        dupes++;
+      }
+
+      return {
+        ...tx,
+        isDuplicate,
+      };
+    });
+
+    return {
+      annotatedTransactions: annotated,
+      duplicateCount: dupes,
+      netNewCount: annotated.length - dupes,
+    };
+  }, [parsedPreview, transactions, selectedAdvisorId, advisors]);
 
   // Handle Drag & Drop / File selection for Zerodha
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -109,11 +149,23 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
 
     const targetAdv = selectedAdvisorId || advisors[0]?.id || 'adv-1';
 
-    const updatedTxs: Transaction[] = parsedPreview.transactions.map((tx: Transaction) => ({
-      ...tx,
-      advisorId: targetAdv,
-      tradeTag: customTag || tx.tradeTag,
-    }));
+    const candidateTxs = skipDuplicates
+      ? annotatedTransactions.filter((tx: any) => !tx.isDuplicate)
+      : annotatedTransactions;
+
+    if (candidateTxs.length === 0) {
+      setImportStatus('No new records imported (all trades were detected as duplicates).');
+      return;
+    }
+
+    const updatedTxs: Transaction[] = candidateTxs.map((tx: any) => {
+      const { isDuplicate, ...rest } = tx;
+      return {
+        ...rest,
+        advisorId: targetAdv,
+        tradeTag: customTag || tx.tradeTag,
+      };
+    });
 
     onImportTransactions(updatedTxs);
 
@@ -121,7 +173,8 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       onUpdateQuotes(parsedPreview.quotesToUpdate);
     }
 
-    setImportStatus(`Successfully imported ${updatedTxs.length} records!`);
+    const dupMsg = skipDuplicates && duplicateCount > 0 ? ` (${duplicateCount} duplicate(s) skipped)` : '';
+    setImportStatus(`Successfully imported ${updatedTxs.length} records${dupMsg}!`);
     setParsedPreview(null);
     setCsvFileName(null);
     setCsvRawText(null);
@@ -315,10 +368,41 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
 
             {parsedPreview && (
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-                  <span>Detected: {parsedPreview.detectedType} Format</span>
-                  <span className="text-indigo-600">{parsedPreview.transactions.length} Records Found</span>
+                <div className="flex flex-wrap items-center justify-between text-xs font-bold text-slate-800 gap-2">
+                  <span>Detected: {parsedPreview.sourceType || parsedPreview.detectedType || 'CSV'} Format</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-600">{parsedPreview.transactions.length} Total</span>
+                    {duplicateCount > 0 ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                        {duplicateCount} Duplicate{duplicateCount > 1 ? 's' : ''}
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        All {netNewCount} Net New
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {duplicateCount > 0 && (
+                  <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-900">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CopyX className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span className="truncate">
+                        <strong>{duplicateCount} duplicate trade{duplicateCount > 1 ? 's' : ''}</strong> matched existing ledger records for this advisor.
+                      </span>
+                    </div>
+                    <label className="flex items-center gap-1.5 font-bold cursor-pointer shrink-0 text-amber-950">
+                      <input
+                        type="checkbox"
+                        checked={skipDuplicates}
+                        onChange={(e) => setSkipDuplicates(e.target.checked)}
+                        className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                      />
+                      <span>Skip Duplicates</span>
+                    </label>
+                  </div>
+                )}
 
                 <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg bg-white">
                   <table className="w-full text-[11px] text-left">
@@ -329,11 +413,12 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                         <th className="px-2.5 py-1.5">Symbol</th>
                         <th className="px-2.5 py-1.5 text-right">Qty</th>
                         <th className="px-2.5 py-1.5 text-right">Price</th>
+                        <th className="px-2.5 py-1.5 text-center">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {parsedPreview.transactions.slice(0, 8).map((tx: any, i: number) => (
-                        <tr key={i} className="hover:bg-slate-50">
+                      {annotatedTransactions.slice(0, 10).map((tx: any, i: number) => (
+                        <tr key={i} className={`hover:bg-slate-50 ${tx.isDuplicate ? 'bg-amber-50/40' : ''}`}>
                           <td className="px-2.5 py-1 text-slate-500">{tx.date}</td>
                           <td className="px-2.5 py-1">
                             <span className={`font-bold ${tx.type === 'BUY' ? 'text-emerald-600' : 'text-rose-600'}`}>
@@ -343,22 +428,41 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                           <td className="px-2.5 py-1 font-bold text-slate-800">{tx.symbol}</td>
                           <td className="px-2.5 py-1 text-right font-mono">{tx.quantity}</td>
                           <td className="px-2.5 py-1 text-right font-mono">{formatINR(tx.price)}</td>
+                          <td className="px-2.5 py-1 text-center">
+                            {tx.isDuplicate ? (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                Duplicate
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                New
+                              </span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
 
-                <div className="flex items-center justify-between pt-2">
+                <div className="flex flex-col sm:flex-row items-center justify-between pt-2 gap-2">
                   <span className="text-[11px] text-slate-500">
-                    Showing first {Math.min(8, parsedPreview.transactions.length)} of {parsedPreview.transactions.length} trades
+                    Showing first {Math.min(10, annotatedTransactions.length)} of {annotatedTransactions.length} trades
+                    {skipDuplicates && duplicateCount > 0 ? ` (${netNewCount} will be imported)` : ''}
                   </span>
                   <button
                     id="btn-confirm-import"
+                    disabled={skipDuplicates && netNewCount === 0}
                     onClick={handleConfirmZerodhaImport}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition"
+                    className={`px-4 py-2 font-bold text-xs rounded-xl shadow-xs transition ${
+                      skipDuplicates && netNewCount === 0
+                        ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                    }`}
                   >
-                    Confirm & Import {parsedPreview.transactions.length} Records
+                    {skipDuplicates && netNewCount === 0
+                      ? 'All Trades Already In Ledger'
+                      : `Confirm & Import ${skipDuplicates ? netNewCount : annotatedTransactions.length} Records`}
                   </button>
                 </div>
               </div>
