@@ -15,17 +15,13 @@ import {
   deleteDoc,
   collection,
   getDocs,
+  getDocsFromServer,
+  getDocFromServer,
   writeBatch,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Advisor, AdvisorPortfolio, Dividend, StockQuote, Transaction } from '../types/portfolio';
-import {
-  INITIAL_ADVISORS,
-  INITIAL_PORTFOLIOS,
-  INITIAL_DIVIDENDS,
-  INITIAL_STOCK_QUOTES,
-  INITIAL_TRANSACTIONS,
-} from '../data/initialData';
 
 export interface CloudPortfolioData {
   advisors: Advisor[];
@@ -49,6 +45,7 @@ interface AuthContextType {
   signUpWithEmail: (email: string, pass: string, name?: string) => Promise<void>;
   signOut: () => Promise<void>;
   clearAllUserData: () => Promise<void>;
+  testFirestoreWrite: () => Promise<void>;
   saveUserDataToCloud: (
     advisors: Advisor[],
     transactions: Transaction[],
@@ -92,6 +89,9 @@ export const AuthProvider: React.FC<{
   const [initialSyncDone, setInitialSyncDone] = useState(false);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
   const isQuotaHitRef = useRef(false);
+  const firestoreQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const resetInProgressRef = useRef(false);
+  const syncGenerationRef = useRef(0);
 
   const markQuotaExceeded = useCallback(() => {
     isQuotaHitRef.current = true;
@@ -336,8 +336,10 @@ export const AuthProvider: React.FC<{
         return;
       }
 
-      setSyncStatus('saving');
-      try {
+      const saveOperation = firestoreQueueRef.current.catch(() => undefined).then(async () => {
+        if (resetInProgressRef.current) return;
+
+        setSyncStatus('saving');
         const sanitizedAdvisors = deepSanitize(Array.isArray(advisors) ? advisors : []);
         const sanitizedPortfolios = deepSanitize(Array.isArray(portfolios) ? portfolios : []);
         const sanitizedTransactions = deepSanitize(Array.isArray(transactions) ? transactions : []);
@@ -364,61 +366,23 @@ export const AuthProvider: React.FC<{
         const userRef = doc(db, 'users', activeUid);
         await setDoc(userRef, { portfolio: payload, lastLogin: new Date().toISOString(), initialized: true }, { merge: true });
 
-        // 3. Write subcollections asynchronously so individual collection queries are also fully up to date
-        try {
-          if (sanitizedAdvisors.length > 0) {
+        const collections = [
+          ['advisors', sanitizedAdvisors],
+          ['portfolios', sanitizedPortfolios],
+          ['transactions', sanitizedTransactions],
+          ['dividends', sanitizedDividends],
+        ] as const;
+        for (const [collectionName, records] of collections) {
+          for (let start = 0; start < records.length; start += 450) {
             const batch = writeBatch(db);
-            let batchOps = 0;
-            sanitizedAdvisors.forEach((adv: any) => {
-              if (adv?.id && batchOps < 450) {
-                const r = doc(db, 'users', activeUid, 'advisors', adv.id);
-                batch.set(r, { ...adv, userId: activeUid, updatedAt: new Date().toISOString() }, { merge: true });
-                batchOps++;
+            records.slice(start, start + 450).forEach((record: any) => {
+              if (record?.id) {
+                const recordRef = doc(db, 'users', activeUid, collectionName, record.id);
+                batch.set(recordRef, { ...record, userId: activeUid, updatedAt: new Date().toISOString() }, { merge: true });
               }
             });
-            if (batchOps > 0) await batch.commit();
+            await batch.commit();
           }
-
-          if (sanitizedPortfolios.length > 0) {
-            const batch = writeBatch(db);
-            let batchOps = 0;
-            sanitizedPortfolios.forEach((port: any) => {
-              if (port?.id && batchOps < 450) {
-                const r = doc(db, 'users', activeUid, 'portfolios', port.id);
-                batch.set(r, { ...port, userId: activeUid, updatedAt: new Date().toISOString() }, { merge: true });
-                batchOps++;
-              }
-            });
-            if (batchOps > 0) await batch.commit();
-          }
-
-          if (sanitizedTransactions.length > 0) {
-            const batch = writeBatch(db);
-            let batchOps = 0;
-            sanitizedTransactions.forEach((tx: any) => {
-              if (tx?.id && batchOps < 450) {
-                const r = doc(db, 'users', activeUid, 'transactions', tx.id);
-                batch.set(r, { ...tx, userId: activeUid, updatedAt: new Date().toISOString() }, { merge: true });
-                batchOps++;
-              }
-            });
-            if (batchOps > 0) await batch.commit();
-          }
-
-          if (sanitizedDividends.length > 0) {
-            const batch = writeBatch(db);
-            let batchOps = 0;
-            sanitizedDividends.forEach((div: any) => {
-              if (div?.id && batchOps < 450) {
-                const r = doc(db, 'users', activeUid, 'dividends', div.id);
-                batch.set(r, { ...div, userId: activeUid, updatedAt: new Date().toISOString() }, { merge: true });
-                batchOps++;
-              }
-            });
-            if (batchOps > 0) await batch.commit();
-          }
-        } catch (subErr) {
-          console.warn('Subcollection sync notice (consolidated doc already saved):', subErr);
         }
 
         isQuotaHitRef.current = false;
@@ -426,8 +390,13 @@ export const AuthProvider: React.FC<{
         setIsCloudSynced(true);
         setSyncStatus('synced');
         setLastSyncedAt(new Date());
-      } catch (err: any) {
+      }).catch((err: any) => {
         console.error('Error saving user data to Firestore:', err);
+        try {
+          handleFirestoreError(err, OperationType.WRITE, `users/${activeUid}`);
+        } catch (structuredError) {
+          console.error(structuredError);
+        }
         if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota') || err?.message?.includes('quota')) {
           markQuotaExceeded();
           console.warn('Firestore daily write quota limit hit. Changes remain safely preserved in LocalStorage.');
@@ -437,14 +406,36 @@ export const AuthProvider: React.FC<{
         } else {
           setSyncStatus('error');
         }
-      }
+      });
+      firestoreQueueRef.current = saveOperation.catch(() => undefined);
+      await saveOperation;
     },
     [user, markQuotaExceeded]
   );
 
+  const testFirestoreWrite = useCallback(async () => {
+    const activeUid = auth.currentUser?.uid || user?.uid;
+    if (!activeUid || !auth.currentUser) {
+      throw new Error('You must be signed in before testing a Firestore write.');
+    }
+
+    const testPath = `users/${activeUid}/firestore_poc/test`;
+    try {
+      await setDoc(doc(db, 'users', activeUid, 'firestore_poc', 'test'), {
+        userId: activeUid,
+        message: 'Firestore write test succeeded',
+        writtenAt: serverTimestamp(),
+      }, { merge: true });
+    } catch (error: any) {
+      const code = error?.code ? ` [${error.code}]` : '';
+      throw new Error(`${error?.message || String(error)}${code} Path: ${testPath}`);
+    }
+  }, [user]);
+
   // Monitor Auth state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      const syncGeneration = ++syncGenerationRef.current;
       setUser(currentUser);
       setLoading(false);
 
@@ -453,6 +444,7 @@ export const AuthProvider: React.FC<{
         try {
           // Fetch user data from consolidated single document or subcollections
           const loaded = await fetchAllUserData(currentUser.uid);
+          if (syncGeneration !== syncGenerationRef.current || resetInProgressRef.current) return;
           if (loaded !== null) {
             // User document exists in cloud (even if empty after reset)
             if (onCloudDataLoaded) {
@@ -462,81 +454,17 @@ export const AuthProvider: React.FC<{
             setSyncStatus('synced');
             setLastSyncedAt(new Date());
           } else {
-            // Check if local storage has data from guest/offline session
-            let localAdvisors: Advisor[] = [];
-            try {
-              const savedAdv = localStorage.getItem('tradewise_advisors_v1');
-              if (savedAdv) {
-                const parsed = JSON.parse(savedAdv);
-                if (Array.isArray(parsed) && parsed.length > 0) localAdvisors = parsed;
-              }
-            } catch {}
-
-            let localPortfolios: AdvisorPortfolio[] = [];
-            try {
-              const savedPort = localStorage.getItem('tradewise_portfolios_v1');
-              if (savedPort) {
-                const parsed = JSON.parse(savedPort);
-                if (Array.isArray(parsed) && parsed.length > 0) localPortfolios = parsed;
-              }
-            } catch {}
-
-            let localTransactions: Transaction[] = [];
-            try {
-              const savedTx = localStorage.getItem('tradewise_transactions_v1');
-              if (savedTx) {
-                const parsed = JSON.parse(savedTx);
-                if (Array.isArray(parsed) && parsed.length > 0) localTransactions = parsed;
-              }
-            } catch {}
-
-            let localDividends: Dividend[] = [];
-            try {
-              const savedDiv = localStorage.getItem('tradewise_dividends_v1');
-              if (savedDiv) {
-                const parsed = JSON.parse(savedDiv);
-                if (Array.isArray(parsed) && parsed.length > 0) localDividends = parsed;
-              }
-            } catch {}
-
-            let localQuotes: Record<string, StockQuote> = {};
-            try {
-              const savedQuotes = localStorage.getItem('tradewise_quotes_v1');
-              if (savedQuotes) {
-                const parsed = JSON.parse(savedQuotes);
-                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                  localQuotes = parsed;
-                }
-              }
-            } catch {}
-
-            const finalAdvisors = localAdvisors.length > 0 ? localAdvisors : INITIAL_ADVISORS;
-            const finalPortfolios = localPortfolios.length > 0 ? localPortfolios : INITIAL_PORTFOLIOS;
-            const finalTransactions = localTransactions.length > 0 ? localTransactions : INITIAL_TRANSACTIONS;
-            const finalDividends = localDividends.length > 0 ? localDividends : INITIAL_DIVIDENDS;
-            const finalQuotes = Object.keys(localQuotes).length > 0 ? localQuotes : INITIAL_STOCK_QUOTES;
-
-            const payloadToSync: CloudPortfolioData = {
-              advisors: finalAdvisors,
-              portfolios: finalPortfolios,
-              transactions: finalTransactions,
-              dividends: finalDividends,
-              quotes: finalQuotes,
-            };
-
-            if (onCloudDataLoaded) {
-              onCloudDataLoaded(payloadToSync);
-            }
-
-            // Immediately persist to user's Cloud Firestore
-            await saveUserDataToCloud(
-              finalAdvisors,
-              finalTransactions,
-              finalDividends,
-              finalQuotes,
-              finalPortfolios,
-              currentUser.uid
-            );
+            // A new account starts empty. Do not seed or upload local data.
+            onCloudDataLoaded?.({
+              advisors: [],
+              portfolios: [],
+              transactions: [],
+              dividends: [],
+              quotes: {},
+            });
+            setIsCloudSynced(true);
+            setSyncStatus('synced');
+            setLastSyncedAt(new Date());
           }
           setInitialSyncDone(true);
         } catch (error: any) {
@@ -595,63 +523,54 @@ export const AuthProvider: React.FC<{
 
     const activeUid = auth.currentUser?.uid || user?.uid;
     if (activeUid && auth.currentUser) {
+      syncGenerationRef.current++;
+      resetInProgressRef.current = true;
       setSyncStatus('saving');
-      try {
-        // 2. Query and delete all subcollection documents under /users/{uid}/*
+      const resetOperation = firestoreQueueRef.current.catch(() => undefined).then(async () => {
         const subcollections = ['advisors', 'portfolios', 'transactions', 'dividends', 'quotes'];
-        for (const subcol of subcollections) {
-          try {
-            const colRef = collection(db, 'users', activeUid, subcol);
-            const snap = await getDocs(colRef);
-            if (!snap.empty) {
-              const batch = writeBatch(db);
-              let batchCount = 0;
-              for (const docSnap of snap.docs) {
-                batch.delete(docSnap.ref);
-                batchCount++;
-                if (batchCount >= 450) {
-                  await batch.commit();
-                  batchCount = 0;
-                }
-              }
-              if (batchCount > 0) {
-                await batch.commit();
-              }
-            }
-          } catch (subErr) {
-            console.warn(`Error clearing subcollection users/${activeUid}/${subcol}:`, subErr);
+        for (const subcollectionName of subcollections) {
+          const snapshot = await getDocsFromServer(collection(db, 'users', activeUid, subcollectionName));
+          for (let start = 0; start < snapshot.docs.length; start += 450) {
+            const batch = writeBatch(db);
+            snapshot.docs.slice(start, start + 450).forEach((documentSnapshot) => batch.delete(documentSnapshot.ref));
+            await batch.commit();
           }
         }
 
-        // 3. Clear the consolidated document /users/{uid}/portfolio/main
-        const consolidatedRef = doc(db, 'users', activeUid, 'portfolio', 'main');
-        await setDoc(consolidatedRef, {
-          ...emptyData,
-          initialized: true,
-          lastUpdated: new Date().toISOString(),
-          dataVersion: '2.0',
-        });
+        await deleteDoc(doc(db, 'users', activeUid, 'portfolio', 'main'));
+        await deleteDoc(doc(db, 'users', activeUid));
 
-        // 4. Clear the root document /users/{uid}
-        const userRef = doc(db, 'users', activeUid);
-        await setDoc(userRef, {
-          portfolio: emptyData,
-          initialized: true,
-          lastResetAt: new Date().toISOString(),
-          lastLogin: new Date().toISOString(),
-        }, { merge: true });
+        const remainingDocuments = await Promise.all([
+          getDocFromServer(doc(db, 'users', activeUid)),
+          getDocFromServer(doc(db, 'users', activeUid, 'portfolio', 'main')),
+          ...subcollections.map((subcollectionName) =>
+            getDocsFromServer(collection(db, 'users', activeUid, subcollectionName))
+          ),
+        ]);
+        if (remainingDocuments.some((result: any) => result.exists?.() || result.docs?.length > 0)) {
+          throw new Error(`Reset verification failed for users/${activeUid}`);
+        }
 
         setIsCloudSynced(true);
         setSyncStatus('synced');
         setLastSyncedAt(new Date());
-      } catch (e: any) {
+      }).catch((e: any) => {
         console.error('Error clearing cloud data:', e);
+        try {
+          handleFirestoreError(e, OperationType.DELETE, `users/${activeUid}`);
+        } catch (structuredError) {
+          console.error(structuredError);
+        }
         if (e?.code === 'resource-exhausted' || e?.message?.includes('Quota') || e?.message?.includes('quota')) {
           markQuotaExceeded();
         } else {
           setSyncStatus('error');
         }
-      }
+      }).finally(() => {
+        resetInProgressRef.current = false;
+      });
+      firestoreQueueRef.current = resetOperation.catch(() => undefined);
+      await resetOperation;
     }
   }, [user, onCloudDataLoaded, markQuotaExceeded]);
 
@@ -745,6 +664,7 @@ export const AuthProvider: React.FC<{
         signUpWithEmail,
         signOut,
         clearAllUserData,
+        testFirestoreWrite,
         saveUserDataToCloud,
         deleteAdvisorFromCloud,
         deletePortfolioFromCloud,

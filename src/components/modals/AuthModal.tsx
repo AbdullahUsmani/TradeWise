@@ -37,6 +37,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, allowClos
     syncStatus,
     resetQuotaStatus,
     clearAllUserData,
+    testFirestoreWrite,
   } = useAuth();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -47,6 +48,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, allowClos
   const [isUnauthorizedDomain, setIsUnauthorizedDomain] = useState(false);
   const [hasCopiedDomain, setHasCopiedDomain] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [firestoreTestResult, setFirestoreTestResult] = useState<string | null>(null);
+  const [isTestingFirestore, setIsTestingFirestore] = useState(false);
 
   const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
   const firebaseSettingsUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`;
@@ -239,6 +242,40 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, allowClos
                 </div>
               )}
 
+              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl space-y-2">
+                <div>
+                  <h4 className="font-bold text-indigo-950 text-xs">Firestore write check</h4>
+                  <p className="text-[11px] text-indigo-800 mt-0.5">
+                    Writes one small test document to your account so we can verify permissions and database configuration.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={isTestingFirestore}
+                  onClick={async () => {
+                    if (!window.confirm('Save a small Firestore test document to verify cloud writes?')) return;
+                    setIsTestingFirestore(true);
+                    setFirestoreTestResult(null);
+                    try {
+                      await testFirestoreWrite();
+                      setFirestoreTestResult('Write succeeded. Check Firestore Console under users/{your UID}/firestore_poc/test.');
+                    } catch (error: any) {
+                      setFirestoreTestResult(`Write failed: ${error?.message || String(error)}`);
+                    } finally {
+                      setIsTestingFirestore(false);
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-indigo-700 hover:bg-indigo-800 text-white font-semibold rounded-lg transition disabled:opacity-50 cursor-pointer"
+                >
+                  {isTestingFirestore ? 'Testing Firestore write...' : 'Test Firestore Write'}
+                </button>
+                {firestoreTestResult && (
+                  <p className={`text-[11px] leading-relaxed break-words ${firestoreTestResult.startsWith('Write succeeded') ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {firestoreTestResult}
+                  </p>
+                )}
+              </div>
+
               <div className="pt-2 flex flex-col gap-2">
                 <div className="flex justify-between items-center gap-3">
                   <button
@@ -262,8 +299,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, allowClos
                   type="button"
                   onClick={async () => {
                     if (window.confirm('Reset all portfolio data to 0? This will wipe all advisors and trades from cloud & local storage.')) {
-                      await clearAllUserData();
-                      if (onResetAllData) onResetAllData();
+                      if (onResetAllData) await onResetAllData();
+                      else await clearAllUserData();
                       onClose();
                     }
                   }}

@@ -1,0 +1,12 @@
+{
+  "firestore": [
+    {
+      "database": "(default)",
+      "rules": "firestore.rules"
+    },
+    {
+      "database": "ai-studio-multiadvisorport-569d5ae0-0051-4e93-95c9-206163d205ac",
+      "rules": "firestore.rules"
+    }
+  ]
+}

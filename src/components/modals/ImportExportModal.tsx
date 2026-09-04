@@ -431,9 +431,9 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                 <button
                   type="button"
                   id="btn-reset-portfolio-data"
-                  onClick={() => {
+                  onClick={async () => {
                     if (window.confirm('Are you sure you want to reset all portfolio data to 0? This will clear all advisors and trades.')) {
-                      onResetAllData();
+                      await onResetAllData();
                       onClose();
                     }
                   }}

@@ -1,12 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Layers } from 'lucide-react';
-import {
-  INITIAL_ADVISORS,
-  INITIAL_PORTFOLIOS,
-  INITIAL_DIVIDENDS,
-  INITIAL_STOCK_QUOTES,
-  INITIAL_TRANSACTIONS,
-} from './data/initialData';
 import {
   Advisor,
   AdvisorPortfolio,
@@ -57,7 +50,7 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
     initialSyncDone,
   } = useAuth();
 
-  // Load state from localStorage or fallback to clean initial dataset
+  // Load state from localStorage or start empty.
   const [advisors, setAdvisors] = useState<Advisor[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.ADVISORS);
     if (saved) {
@@ -70,7 +63,7 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
         console.error('Failed to parse saved advisors:', e);
       }
     }
-    return INITIAL_ADVISORS;
+    return [];
   });
 
   const [portfolios, setPortfolios] = useState<AdvisorPortfolio[]>(() => {
@@ -83,7 +76,7 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
         console.error('Failed to parse saved portfolios:', e);
       }
     }
-    return INITIAL_PORTFOLIOS;
+    return [];
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
@@ -96,7 +89,7 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
         console.error('Failed to parse saved transactions:', e);
       }
     }
-    return INITIAL_TRANSACTIONS;
+    return [];
   });
 
   const [dividends, setDividends] = useState<Dividend[]>(() => {
@@ -109,7 +102,7 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
         console.error('Failed to parse saved dividends:', e);
       }
     }
-    return INITIAL_DIVIDENDS;
+    return [];
   });
 
   const [quotes, setQuotes] = useState<Record<string, StockQuote>>(() => {
@@ -122,7 +115,7 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
         console.error('Failed to parse saved quotes:', e);
       }
     }
-    return INITIAL_STOCK_QUOTES;
+    return {};
   });
 
   // Reset all portfolio data to 0
@@ -790,14 +783,14 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
 export default function App() {
   const [cloudLoadedData, setCloudLoadedData] = useState<CloudPortfolioData | null>(null);
 
-  const handleCloudDataLoaded = (data: CloudPortfolioData) => {
+  const handleCloudDataLoaded = useCallback((data: CloudPortfolioData) => {
     localStorage.setItem(STORAGE_KEYS.ADVISORS, JSON.stringify(data.advisors || []));
     localStorage.setItem(STORAGE_KEYS.PORTFOLIOS, JSON.stringify(data.portfolios || []));
     localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(data.transactions || []));
     localStorage.setItem(STORAGE_KEYS.DIVIDENDS, JSON.stringify(data.dividends || []));
     localStorage.setItem(STORAGE_KEYS.QUOTES, JSON.stringify(data.quotes || {}));
     setCloudLoadedData(data);
-  };
+  }, []);
 
   return (
     <AuthProvider onCloudDataLoaded={handleCloudDataLoaded}>
