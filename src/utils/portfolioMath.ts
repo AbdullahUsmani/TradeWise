@@ -195,6 +195,8 @@ export function computePortfolioMetrics(
         advisorId: adv.id,
         name: 'Main Portfolio',
         type: 'CORE_LONG_TERM',
+        status: 'ACTIVE',
+        activationDate: adv.createdAt || new Date().toISOString().split('T')[0],
         createdAt: adv.createdAt || new Date().toISOString(),
       };
       portfoliosByAdvisor.set(adv.id, [defaultPort]);

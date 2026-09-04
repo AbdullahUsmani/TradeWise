@@ -10,11 +10,16 @@ export type PortfolioType =
   | 'BALANCED'
   | 'CUSTOM';
 
+export type PortfolioStatus = 'ACTIVE' | 'INACTIVE';
+
 export interface AdvisorPortfolio {
   id: string;
   advisorId: string;
   name: string; // e.g. "Core Compounders", "High Beta Swing", "Special Situations"
   type: PortfolioType;
+  status: PortfolioStatus; // 'ACTIVE' | 'INACTIVE'
+  activationDate: string; // YYYY-MM-DD
+  deactivationDate?: string; // YYYY-MM-DD (when inactive or scheduled for deactivation)
   description?: string;
   targetAllocationPct?: number; // e.g. 40%
   color?: string;

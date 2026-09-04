@@ -45,6 +45,7 @@ interface AuthContextType {
   signUpWithEmail: (email: string, pass: string, name?: string) => Promise<void>;
   signOut: () => Promise<void>;
   clearAllUserData: () => Promise<void>;
+  clearAllTradesFromCloud: (advisorId?: string) => Promise<void>;
   testFirestoreWrite: () => Promise<void>;
   saveUserDataToCloud: (
     advisors: Advisor[],
@@ -119,9 +120,16 @@ export const AuthProvider: React.FC<{
         const consolidatedSnap = await getDoc(consolidatedRef);
         if (consolidatedSnap.exists()) {
           const d = consolidatedSnap.data();
+          const rawPorts = safeArray<any>(d.portfolios);
+          const portfolios: AdvisorPortfolio[] = rawPorts.map((p) => ({
+            ...p,
+            status: (p.status || '').toUpperCase() === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+            activationDate: p.activationDate || p.createdAt || new Date().toISOString().split('T')[0],
+            deactivationDate: p.deactivationDate || undefined,
+          }));
           return {
             advisors: safeArray<Advisor>(d.advisors),
-            portfolios: safeArray<AdvisorPortfolio>(d.portfolios),
+            portfolios,
             transactions: safeArray<Transaction>(d.transactions),
             dividends: safeArray<Dividend>(d.dividends),
             quotes: safeObject<Record<string, StockQuote>>(d.quotes),
@@ -137,9 +145,16 @@ export const AuthProvider: React.FC<{
         const userSnap = await getDoc(userRef);
         if (userSnap.exists() && userSnap.data()?.portfolio) {
           const p = userSnap.data().portfolio;
+          const rawPorts = safeArray<any>(p.portfolios);
+          const portfolios: AdvisorPortfolio[] = rawPorts.map((port) => ({
+            ...port,
+            status: (port.status || '').toUpperCase() === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+            activationDate: port.activationDate || port.createdAt || new Date().toISOString().split('T')[0],
+            deactivationDate: port.deactivationDate || undefined,
+          }));
           return {
             advisors: safeArray<Advisor>(p.advisors),
-            portfolios: safeArray<AdvisorPortfolio>(p.portfolios),
+            portfolios,
             transactions: safeArray<Transaction>(p.transactions),
             dividends: safeArray<Dividend>(p.dividends),
             quotes: safeObject<Record<string, StockQuote>>(p.quotes),
@@ -180,11 +195,19 @@ export const AuthProvider: React.FC<{
         if (!port) return;
         const id = port.id || `port-${port.name || Math.random().toString(36).substr(2, 6)}`;
         if (!portfoliosMap.has(id)) {
+          const rawStatus = (port.status || '').toUpperCase();
+          const status = rawStatus === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
+          const activationDate = port.activationDate || port.createdAt || new Date().toISOString().split('T')[0];
+          const deactivationDate = port.deactivationDate || undefined;
+
           portfoliosMap.set(id, {
             id,
             advisorId: port.advisorId || '',
             name: port.name || 'Main Basket',
             type: port.type || 'CORE_LONG_TERM',
+            status,
+            activationDate,
+            deactivationDate,
             description: port.description || '',
             targetAllocationPct: typeof port.targetAllocationPct === 'number' ? port.targetAllocationPct : undefined,
             color: port.color || undefined,
@@ -529,38 +552,49 @@ export const AuthProvider: React.FC<{
       const resetOperation = firestoreQueueRef.current.catch(() => undefined).then(async () => {
         const subcollections = ['advisors', 'portfolios', 'transactions', 'dividends', 'quotes'];
         for (const subcollectionName of subcollections) {
-          const snapshot = await getDocsFromServer(collection(db, 'users', activeUid, subcollectionName));
-          for (let start = 0; start < snapshot.docs.length; start += 450) {
-            const batch = writeBatch(db);
-            snapshot.docs.slice(start, start + 450).forEach((documentSnapshot) => batch.delete(documentSnapshot.ref));
-            await batch.commit();
+          try {
+            const snapshot = await getDocs(collection(db, 'users', activeUid, subcollectionName));
+            for (let start = 0; start < snapshot.docs.length; start += 450) {
+              const batch = writeBatch(db);
+              snapshot.docs.slice(start, start + 450).forEach((documentSnapshot) => batch.delete(documentSnapshot.ref));
+              await batch.commit();
+            }
+          } catch (scErr) {
+            console.warn(`Error clearing subcollection ${subcollectionName}:`, scErr);
           }
         }
 
-        await deleteDoc(doc(db, 'users', activeUid, 'portfolio', 'main'));
-        await deleteDoc(doc(db, 'users', activeUid));
+        // Set consolidated document to clean zero state
+        await setDoc(doc(db, 'users', activeUid, 'portfolio', 'main'), {
+          advisors: [],
+          portfolios: [],
+          transactions: [],
+          dividends: [],
+          quotes: {},
+          lastUpdated: new Date().toISOString(),
+          dataVersion: '2.0',
+        });
 
-        const remainingDocuments = await Promise.all([
-          getDocFromServer(doc(db, 'users', activeUid)),
-          getDocFromServer(doc(db, 'users', activeUid, 'portfolio', 'main')),
-          ...subcollections.map((subcollectionName) =>
-            getDocsFromServer(collection(db, 'users', activeUid, subcollectionName))
-          ),
-        ]);
-        if (remainingDocuments.some((result: any) => result.exists?.() || result.docs?.length > 0)) {
-          throw new Error(`Reset verification failed for users/${activeUid}`);
-        }
+        // Set user doc to empty portfolio
+        await setDoc(doc(db, 'users', activeUid), {
+          portfolio: {
+            advisors: [],
+            portfolios: [],
+            transactions: [],
+            dividends: [],
+            quotes: {},
+            lastUpdated: new Date().toISOString(),
+            dataVersion: '2.0',
+          },
+          lastResetAt: new Date().toISOString(),
+          initialized: true,
+        }, { merge: true });
 
         setIsCloudSynced(true);
         setSyncStatus('synced');
         setLastSyncedAt(new Date());
       }).catch((e: any) => {
         console.error('Error clearing cloud data:', e);
-        try {
-          handleFirestoreError(e, OperationType.DELETE, `users/${activeUid}`);
-        } catch (structuredError) {
-          console.error(structuredError);
-        }
         if (e?.code === 'resource-exhausted' || e?.message?.includes('Quota') || e?.message?.includes('quota')) {
           markQuotaExceeded();
         } else {
@@ -573,6 +607,134 @@ export const AuthProvider: React.FC<{
       await resetOperation;
     }
   }, [user, onCloudDataLoaded, markQuotaExceeded]);
+
+  // Clean up trades specifically: removes trade transactions while preserving Advisors and Portfolios
+  const clearAllTradesFromCloud = useCallback(
+    async (advisorId?: string) => {
+      // 1. Immediately update LocalStorage transactions for instant safety
+      try {
+        if (advisorId) {
+          const raw = localStorage.getItem('tradewise_transactions_v1');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              const remaining = parsed.filter((t: any) => t.advisorId !== advisorId);
+              localStorage.setItem('tradewise_transactions_v1', JSON.stringify(remaining));
+            }
+          }
+        } else {
+          localStorage.setItem('tradewise_transactions_v1', JSON.stringify([]));
+        }
+      } catch (err) {
+        console.warn('LocalStorage clear trades error:', err);
+      }
+
+      const activeUid = auth.currentUser?.uid || user?.uid;
+      if (!activeUid || !auth.currentUser) {
+        setIsCloudSynced(false);
+        setSyncStatus('offline');
+        return;
+      }
+
+      syncGenerationRef.current++;
+      setSyncStatus('saving');
+
+      const operation = firestoreQueueRef.current.catch(() => undefined).then(async () => {
+        // 1. Delete matching documents from subcollection
+        try {
+          const snapshot = await getDocs(collection(db, 'users', activeUid, 'transactions'));
+          const toDelete = advisorId
+            ? snapshot.docs.filter((d) => d.data()?.advisorId === advisorId)
+            : snapshot.docs;
+
+          for (let start = 0; start < toDelete.length; start += 450) {
+            const batch = writeBatch(db);
+            toDelete.slice(start, start + 450).forEach((documentSnapshot) => {
+              batch.delete(documentSnapshot.ref);
+            });
+            await batch.commit();
+          }
+        } catch (subErr) {
+          console.warn('Subcollection transaction delete warning:', subErr);
+        }
+
+        // 2. Update consolidated document
+        const consolidatedRef = doc(db, 'users', activeUid, 'portfolio', 'main');
+        try {
+          const mainSnap = await getDoc(consolidatedRef);
+          if (mainSnap.exists()) {
+            const existingData = mainSnap.data();
+            const existingTxs: Transaction[] = Array.isArray(existingData.transactions) ? existingData.transactions : [];
+            const remainingTxs = advisorId
+              ? existingTxs.filter((t) => t.advisorId !== advisorId)
+              : [];
+            await setDoc(
+              consolidatedRef,
+              {
+                ...existingData,
+                transactions: remainingTxs,
+                lastUpdated: new Date().toISOString(),
+              },
+              { merge: true }
+            );
+          } else {
+            await setDoc(
+              consolidatedRef,
+              {
+                transactions: [],
+                lastUpdated: new Date().toISOString(),
+                dataVersion: '2.0',
+              },
+              { merge: true }
+            );
+          }
+        } catch (mainErr) {
+          console.warn('Consolidated doc update warning:', mainErr);
+        }
+
+        // 3. Update root user doc
+        try {
+          const userRef = doc(db, 'users', activeUid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists() && userSnap.data()?.portfolio) {
+            const p = userSnap.data().portfolio;
+            const existingTxs = Array.isArray(p.transactions) ? p.transactions : [];
+            const remainingTxs = advisorId
+              ? existingTxs.filter((t: any) => t.advisorId !== advisorId)
+              : [];
+            await setDoc(
+              userRef,
+              {
+                portfolio: {
+                  ...p,
+                  transactions: remainingTxs,
+                  lastUpdated: new Date().toISOString(),
+                },
+              },
+              { merge: true }
+            );
+          }
+        } catch (userErr) {
+          console.warn('Root user doc update warning:', userErr);
+        }
+
+        setIsCloudSynced(true);
+        setSyncStatus('synced');
+        setLastSyncedAt(new Date());
+      }).catch((e: any) => {
+        console.error('Error clearing trades in cloud:', e);
+        if (e?.code === 'resource-exhausted' || e?.message?.includes('Quota') || e?.message?.includes('quota')) {
+          markQuotaExceeded();
+        } else {
+          setSyncStatus('error');
+        }
+      });
+
+      firestoreQueueRef.current = operation.catch(() => undefined);
+      await operation;
+    },
+    [user, markQuotaExceeded]
+  );
 
   const deleteAdvisorFromCloud = useCallback(async (advisorId: string) => {
     if (user && !isQuotaHitRef.current) {
@@ -664,6 +826,7 @@ export const AuthProvider: React.FC<{
         signUpWithEmail,
         signOut,
         clearAllUserData,
+        clearAllTradesFromCloud,
         testFirestoreWrite,
         saveUserDataToCloud,
         deleteAdvisorFromCloud,

@@ -28,6 +28,19 @@
         "advisorId": { "type": "string" },
         "name": { "type": "string" },
         "type": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["ACTIVE", "INACTIVE"],
+          "description": "Lifecycle status of the portfolio (Active or Inactive)"
+        },
+        "activationDate": {
+          "type": "string",
+          "description": "Date when portfolio was activated (YYYY-MM-DD)"
+        },
+        "deactivationDate": {
+          "type": "string",
+          "description": "Date when portfolio was deactivated (YYYY-MM-DD)"
+        },
         "description": { "type": "string" },
         "targetAllocationPct": { "type": "number" },
         "color": { "type": "string" },

@@ -48,6 +48,7 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
     deleteTransactionFromCloud,
     deleteDividendFromCloud,
     clearAllUserData,
+    clearAllTradesFromCloud,
     initialSyncDone,
   } = useAuth();
 
@@ -72,7 +73,14 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.map((p) => ({
+            ...p,
+            status: p.status || (p.deactivationDate ? 'INACTIVE' : 'ACTIVE'),
+            activationDate: p.activationDate || p.createdAt || new Date().toISOString().split('T')[0],
+            deactivationDate: p.deactivationDate || undefined,
+          }));
+        }
       } catch (e) {
         console.error('Failed to parse saved portfolios:', e);
       }
@@ -159,11 +167,45 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
     await clearAllUserData();
   };
 
+  // Clean up all trades specifically: clears buy/sell transactions but preserves Advisors and Portfolios
+  const handleClearAllTrades = async (advisorId?: string) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    const nextTx = advisorId
+      ? transactions.filter((t) => t.advisorId !== advisorId)
+      : [];
+
+    setTransactions(nextTx);
+    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(nextTx));
+
+    lastSavedSnapshotRef.current = JSON.stringify({
+      a: advisors,
+      p: portfolios,
+      t: nextTx,
+      d: dividends,
+    });
+
+    if (user) {
+      await clearAllTradesFromCloud(advisorId);
+    }
+  };
+
   // Sync state when cloud data is loaded from Firestore for logged in user
   useEffect(() => {
     if (cloudLoadedData) {
       setAdvisors(Array.isArray(cloudLoadedData.advisors) ? cloudLoadedData.advisors : []);
-      setPortfolios(Array.isArray(cloudLoadedData.portfolios) ? cloudLoadedData.portfolios : []);
+      setPortfolios(
+        Array.isArray(cloudLoadedData.portfolios)
+          ? cloudLoadedData.portfolios.map((p) => ({
+              ...p,
+              status: p.status || (p.deactivationDate ? 'INACTIVE' : 'ACTIVE'),
+              activationDate: p.activationDate || p.createdAt || new Date().toISOString().split('T')[0],
+              deactivationDate: p.deactivationDate || undefined,
+            }))
+          : []
+      );
       setTransactions(Array.isArray(cloudLoadedData.transactions) ? cloudLoadedData.transactions : []);
       setDividends(Array.isArray(cloudLoadedData.dividends) ? cloudLoadedData.dividends : []);
       setQuotes(
@@ -432,10 +474,14 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
 
   // Portfolio handlers
   const handleAddPortfolio = (portData: Omit<AdvisorPortfolio, 'id' | 'createdAt'>) => {
+    const today = new Date().toISOString().split('T')[0];
     const newPort: AdvisorPortfolio = {
       ...portData,
       id: `port-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      createdAt: new Date().toISOString().split('T')[0],
+      status: portData.status || 'ACTIVE',
+      activationDate: portData.activationDate || today,
+      deactivationDate: portData.status === 'INACTIVE' ? (portData.deactivationDate || today) : undefined,
+      createdAt: today,
     };
     const nextPort = [...portfolios, newPort];
     setPortfolios(nextPort);
@@ -722,6 +768,7 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
                 setIsTradeModalOpen(true);
               }}
               onDeleteTransaction={handleDeleteTransaction}
+              onClearAllTrades={handleClearAllTrades}
             />
           )}
 
@@ -765,18 +812,21 @@ function PortfolioAppContent({ cloudLoadedData }: PortfolioAppContentProps) {
         isOpen={isImportExportModalOpen}
         onClose={() => setIsImportExportModalOpen(false)}
         advisors={advisors}
+        portfolios={portfolios}
         transactions={transactions}
         dividends={dividends}
         quotes={quotes}
         onImportTransactions={handleImportTransactions}
         onImportDividends={handleImportDividends}
         onUpdateQuotes={handleUpdateQuotesFromImport}
+        onClearAllTrades={handleClearAllTrades}
         onResetAllData={handleResetAllData}
       />
 
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
+        onClearAllTrades={handleClearAllTrades}
         onResetAllData={handleResetAllData}
       />
 

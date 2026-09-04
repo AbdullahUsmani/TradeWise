@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import { Advisor, MarketCapCategory, Transaction, StockQuote } from '../types/portfolio';
+import { Advisor, AdvisorPortfolio, MarketCapCategory, Transaction, StockQuote } from '../types/portfolio';
 
 // Common stock name & sector lookup helper for Indian equities
 export const KNOWN_INDIAN_STOCKS: Record<string, { name: string; sector: string; marketCap: MarketCapCategory }> = {
@@ -164,13 +164,17 @@ export function parseZerodhaHoldings(
 
 /**
  * Parses Zerodha Tradebook CSV export (from Kite Console -> Reports -> Tradebook -> Download CSV)
- * Typical Headers:
- * "symbol", "isin", "trade_date", "exchange", "segment", "series", "trade_type", "auction", "quantity", "price", "trade_id", "order_id", "order_execution_time"
+ * Required columns per trade row:
+ * "trade_date", "symbol", "trade_type" (BUY/SELL), "quantity", "price"
+ * With row-level attribution columns:
+ * "advisor_id" (or "Advisor Id", "Advisor") and "portfolio_id" (or "Portfolio Id", "Portfolio")
  */
 export function parseZerodhaTradebook(
   rows: Record<string, any>[],
-  advisorId: string,
-  defaultTag = 'Zerodha Tradebook'
+  defaultAdvisorId: string,
+  defaultTag = 'Zerodha Tradebook',
+  availableAdvisors: Advisor[] = [],
+  availablePortfolios: AdvisorPortfolio[] = []
 ): ZerodhaImportResult {
   const transactions: Transaction[] = [];
   const quotesToUpdate: Record<string, Partial<StockQuote>> = {};
@@ -186,7 +190,7 @@ export function parseZerodhaTradebook(
     const rawSymbol = norm['symbol'] || norm['tradingsymbol'] || norm['instrument'] || '';
     if (!rawSymbol || typeof rawSymbol !== 'string') return;
     const symbol = rawSymbol.replace(/^(NSE:|BSE:|EQ:)/i, '').trim().toUpperCase();
-    if (!symbol) return;
+    if (!symbol || symbol === 'TOTAL') return;
 
     // Trade Type: BUY or SELL
     const rawType = String(norm['tradetype'] || norm['type'] || norm['action'] || 'BUY').toUpperCase();
@@ -201,7 +205,6 @@ export function parseZerodhaTradebook(
     if (rawDate.includes('/')) {
       const parts = rawDate.split('/');
       if (parts.length === 3) {
-        // Assume DD/MM/YYYY or YYYY/MM/DD
         if (parts[0].length === 4) {
           formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
         } else {
@@ -227,6 +230,45 @@ export function parseZerodhaTradebook(
       return;
     }
 
+    // Row-level Advisor ID attribution
+    const rawAdvisor = String(
+      norm['advisorid'] || norm['advisor'] || norm['advisorname'] || ''
+    ).trim();
+
+    let resolvedAdvisorId = defaultAdvisorId;
+    if (rawAdvisor) {
+      // Check if matches an existing advisor by ID or name
+      const matchedAdvisor = availableAdvisors.find(
+        (a) => a.id.toLowerCase() === rawAdvisor.toLowerCase() || a.name.toLowerCase() === rawAdvisor.toLowerCase()
+      );
+      if (matchedAdvisor) {
+        resolvedAdvisorId = matchedAdvisor.id;
+      } else {
+        // Use the raw advisor identifier directly
+        resolvedAdvisorId = rawAdvisor;
+      }
+    }
+
+    // Row-level Portfolio ID attribution
+    const rawPortfolio = String(
+      norm['portfolioid'] || norm['portfolio'] || norm['portfolioname'] || ''
+    ).trim();
+
+    let resolvedPortfolioId: string | undefined = undefined;
+    if (rawPortfolio) {
+      // Check if matches an existing portfolio by ID or name
+      const matchedPortfolio = availablePortfolios.find(
+        (p) =>
+          (p.advisorId === resolvedAdvisorId || !p.advisorId) &&
+          (p.id.toLowerCase() === rawPortfolio.toLowerCase() || p.name.toLowerCase() === rawPortfolio.toLowerCase())
+      );
+      if (matchedPortfolio) {
+        resolvedPortfolioId = matchedPortfolio.id;
+      } else {
+        resolvedPortfolioId = rawPortfolio;
+      }
+    }
+
     const knownMeta = KNOWN_INDIAN_STOCKS[symbol] || {
       name: symbol,
       sector: 'Diversified',
@@ -237,7 +279,8 @@ export function parseZerodhaTradebook(
 
     const tx: Transaction = {
       id: `tx-zdh-tb-${tradeId}-${Date.now()}-${idx}`,
-      advisorId: advisorId,
+      advisorId: resolvedAdvisorId,
+      portfolioId: resolvedPortfolioId,
       symbol: symbol,
       name: knownMeta.name,
       sector: knownMeta.sector,
@@ -247,7 +290,7 @@ export function parseZerodhaTradebook(
       quantity: quantity,
       price: price > 0 ? price : 100,
       charges: Math.max(15, Math.round(quantity * (price || 100) * 0.0012)),
-      notes: `Trade ID: ${tradeId}`,
+      notes: `Trade ID: ${tradeId}${resolvedPortfolioId ? ` | Portfolio: ${resolvedPortfolioId}` : ''}`,
       tradeTag: defaultTag,
     };
 
@@ -274,12 +317,14 @@ export function parseZerodhaTradebook(
 }
 
 /**
- * Universal CSV File parsing router for Zerodha, Smallcase, and standard trade formats
+ * Universal CSV File parsing router strictly enforcing Tradebook imports.
+ * Holdings imports are rejected with an informative error explaining why trades must come from Tradebook.
  */
 export function parseCSVFile(
   fileContent: string,
-  advisorId: string,
-  preferredType?: 'AUTO' | 'HOLDINGS' | 'TRADEBOOK'
+  defaultAdvisorId: string,
+  availableAdvisors: Advisor[] = [],
+  availablePortfolios: AdvisorPortfolio[] = []
 ): Promise<ZerodhaImportResult> {
   return new Promise((resolve, reject) => {
     Papa.parse(fileContent, {
@@ -290,7 +335,7 @@ export function parseCSVFile(
           const rows = results.data as Record<string, any>[];
           if (!rows || rows.length === 0) {
             return resolve({
-              sourceType: 'GENERIC_CSV',
+              sourceType: 'TRADEBOOK',
               transactions: [],
               quotesToUpdate: {},
               parsedCount: 0,
@@ -299,21 +344,22 @@ export function parseCSVFile(
           }
 
           const headerKeys = Object.keys(rows[0]).map((k) => k.toLowerCase().trim());
-          const isTradebook =
-            preferredType === 'TRADEBOOK' ||
-            headerKeys.some((k) => k.includes('trade_type') || k.includes('trade_date') || k.includes('trade_id') || k.includes('order_id'));
-          const isHoldings =
-            preferredType === 'HOLDINGS' ||
-            headerKeys.some((k) => k.includes('avg. cost') || k.includes('cur. val') || k.includes('ltp') || k.includes('instrument'));
+          
+          // Detect if user mistakenly uploaded a Holdings file
+          const isHoldingsFile =
+            headerKeys.some((k) => k.includes('avg. cost') || k.includes('cur. val') || k.includes('ltp')) &&
+            !headerKeys.some((k) => k.includes('trade_type') || k.includes('trade_date') || k.includes('type'));
 
-          if (isTradebook) {
-            resolve(parseZerodhaTradebook(rows, advisorId));
-          } else if (isHoldings) {
-            resolve(parseZerodhaHoldings(rows, advisorId));
-          } else {
-            // Default to holdings parser which handles standard symbol, qty, price formats
-            resolve(parseZerodhaHoldings(rows, advisorId, 'CSV Import'));
+          if (isHoldingsFile) {
+            return reject(
+              new Error(
+                'Holdings CSV cannot be used for importing trades. Holdings files lack execution dates, BUY/SELL trade types, realized P&L history, and advisor attribution. Please upload a Tradebook CSV containing Advisor Id and Portfolio Id columns.'
+              )
+            );
           }
+
+          // Parse as Tradebook with row-level Advisor Id and Portfolio Id attribution
+          resolve(parseZerodhaTradebook(rows, defaultAdvisorId, 'Zerodha Tradebook', availableAdvisors, availablePortfolios));
         } catch (err: any) {
           reject(err);
         }
@@ -323,4 +369,39 @@ export function parseCSVFile(
       },
     });
   });
+}
+
+/**
+ * Generates a ready-to-use Tradebook CSV template with Advisor Id and Portfolio Id columns pre-populated.
+ */
+export function generateSampleTradebookCSV(
+  advisors: Advisor[] = [],
+  portfolios: AdvisorPortfolio[] = []
+): string {
+  const adv1 = advisors[0]?.id || 'adv-1';
+  const adv2 = advisors[1]?.id || advisors[0]?.id || 'adv-2';
+  const port1 = portfolios.find((p) => p.advisorId === adv1)?.id || 'port-core';
+  const port2 = portfolios.find((p) => p.advisorId === adv2)?.id || 'port-swing';
+
+  const headers = [
+    'trade_date',
+    'symbol',
+    'trade_type',
+    'quantity',
+    'price',
+    'advisor_id',
+    'portfolio_id',
+    'trade_id',
+    'order_id',
+  ];
+
+  const sampleRows = [
+    ['2024-04-10', 'RELIANCE', 'BUY', '50', '2850.50', adv1, port1, 'TRD1001', 'ORD2001'],
+    ['2024-04-15', 'TCS', 'BUY', '25', '3820.00', adv1, port1, 'TRD1002', 'ORD2002'],
+    ['2024-05-02', 'DIXON', 'BUY', '15', '6200.00', adv2, port2, 'TRD1003', 'ORD2003'],
+    ['2024-06-18', 'DIXON', 'SELL', '15', '7100.00', adv2, port2, 'TRD1004', 'ORD2004'],
+    ['2024-07-05', 'HDFCBANK', 'BUY', '40', '1490.00', adv1, port1, 'TRD1005', 'ORD2005'],
+  ];
+
+  return [headers.join(','), ...sampleRows.map((r) => r.join(','))].join('\n');
 }

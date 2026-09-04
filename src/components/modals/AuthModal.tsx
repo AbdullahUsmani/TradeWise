@@ -23,10 +23,17 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   allowClose?: boolean;
+  onClearAllTrades?: (advisorId?: string) => Promise<void> | void;
   onResetAllData?: () => void;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, allowClose = true, onResetAllData }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({
+  isOpen,
+  onClose,
+  allowClose = true,
+  onClearAllTrades,
+  onResetAllData,
+}) => {
   const {
     user,
     signInWithGoogle,
@@ -50,6 +57,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, allowClos
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [firestoreTestResult, setFirestoreTestResult] = useState<string | null>(null);
   const [isTestingFirestore, setIsTestingFirestore] = useState(false);
+
+  // In-app confirmation states for safe iframe execution
+  const [confirmingTradesClean, setConfirmingTradesClean] = useState(false);
+  const [confirmingFullReset, setConfirmingFullReset] = useState(false);
+  const [isExecutingAction, setIsExecutingAction] = useState(false);
 
   const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
   const firebaseSettingsUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`;
@@ -295,20 +307,118 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, allowClos
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (window.confirm('Reset all portfolio data to 0? This will wipe all advisors and trades from cloud & local storage.')) {
-                      if (onResetAllData) await onResetAllData();
-                      else await clearAllUserData();
-                      onClose();
-                    }
-                  }}
-                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 font-semibold text-xs rounded-lg transition border border-rose-200/60 cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Reset All Portfolio Data to 0</span>
-                </button>
+                {/* 1. Selective Trade Cleanup */}
+                {onClearAllTrades && (
+                  <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-amber-950 flex items-center gap-1.5">
+                        <Trash2 className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Clean Up Trades Only</span>
+                      </span>
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
+                        Preserves Advisors
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-amber-900/80">
+                      Clears trade logs and active positions while keeping all your Advisors and Portfolios.
+                    </p>
+
+                    {!confirmingTradesClean ? (
+                      <button
+                        type="button"
+                        id="btn-auth-cleanup-trades"
+                        disabled={isExecutingAction}
+                        onClick={() => setConfirmingTradesClean(true)}
+                        className="w-full py-1.5 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg shadow-2xs transition cursor-pointer"
+                      >
+                        Clean Up Trades
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          disabled={isExecutingAction}
+                          onClick={() => setConfirmingTradesClean(false)}
+                          className="flex-1 py-1 px-2 bg-white border border-slate-300 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-50 transition cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          id="btn-confirm-auth-cleanup-trades"
+                          disabled={isExecutingAction}
+                          onClick={async () => {
+                            setIsExecutingAction(true);
+                            try {
+                              await onClearAllTrades();
+                              setConfirmingTradesClean(false);
+                            } catch (e) {
+                              console.error(e);
+                            } finally {
+                              setIsExecutingAction(false);
+                            }
+                          }}
+                          className="flex-1 py-1 px-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-2xs transition cursor-pointer"
+                        >
+                          {isExecutingAction ? 'Cleaning...' : 'Confirm Clean Trades'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 2. Nuclear Reset */}
+                <div className="pt-1">
+                  {!confirmingFullReset ? (
+                    <button
+                      type="button"
+                      id="btn-auth-reset-all"
+                      disabled={isExecutingAction}
+                      onClick={() => setConfirmingFullReset(true)}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 font-semibold text-xs rounded-lg transition border border-rose-200/60 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Reset All Portfolio Data to 0</span>
+                    </button>
+                  ) : (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+                      <p className="text-[11px] font-bold text-rose-950">
+                        Wipe all advisors, portfolios, and trades completely?
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={isExecutingAction}
+                          onClick={() => setConfirmingFullReset(false)}
+                          className="flex-1 py-1 px-2 bg-white border border-slate-300 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-50 transition cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          id="btn-confirm-auth-full-reset"
+                          disabled={isExecutingAction}
+                          onClick={async () => {
+                            setIsExecutingAction(true);
+                            try {
+                              if (onResetAllData) await onResetAllData();
+                              else await clearAllUserData();
+                              setConfirmingFullReset(false);
+                              onClose();
+                            } catch (e) {
+                              console.error(e);
+                            } finally {
+                              setIsExecutingAction(false);
+                            }
+                          }}
+                          className="flex-1 py-1 px-2 bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold rounded-lg shadow-2xs transition cursor-pointer"
+                        >
+                          {isExecutingAction ? 'Resetting...' : 'Confirm Wipe Everything'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ) : (

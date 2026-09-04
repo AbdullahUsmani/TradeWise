@@ -15,6 +15,7 @@ import {
   Briefcase,
   Folder,
   SlidersHorizontal,
+  Download,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -30,6 +31,7 @@ import {
 } from 'recharts';
 import { AdvisorPerformance, TimeframeFilter } from '../types/portfolio';
 import { formatINR, formatPercent } from '../utils/portfolioMath';
+import { exportSingleAdvisorReport, exportPortfoliosCSV } from '../utils/exportUtils';
 
 interface AdvisorDetailViewProps {
   advisorPerformances: AdvisorPerformance[];
@@ -194,14 +196,26 @@ export const AdvisorDetailView: React.FC<AdvisorDetailViewProps> = ({
           {/* Quick Actions */}
           <div className="flex items-center gap-2 shrink-0">
             <button
+              type="button"
+              id={`btn-export-advisor-report-${advisor.id}`}
+              onClick={() => exportSingleAdvisorReport(advisor, portfolios, activeHoldings)}
+              className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
+              title="Export this advisor's holdings and portfolio attribution as CSV"
+            >
+              <Download className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Export CSV</span>
+            </button>
+            <button
+              type="button"
               onClick={() => onAddDividendForAdvisor(advisor.id)}
-              className="px-3 py-1.5 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition"
+              className="px-3 py-1.5 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition cursor-pointer"
             >
               + Log Dividend
             </button>
             <button
+              type="button"
               onClick={() => onAddTradeForAdvisor(advisor.id)}
-              className="px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition"
+              className="px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition cursor-pointer"
             >
               + Log Trade
             </button>
@@ -229,6 +243,7 @@ export const AdvisorDetailView: React.FC<AdvisorDetailViewProps> = ({
             {portfolios.map((p) => {
               const count = activeHoldings.filter((h) => h.portfolioId === p.id).length;
               const isSel = selectedPortfolioId === p.id;
+              const isInactive = p.status === 'INACTIVE';
               return (
                 <button
                   key={p.id}
@@ -236,11 +251,18 @@ export const AdvisorDetailView: React.FC<AdvisorDetailViewProps> = ({
                   className={`px-3 py-1 text-xs font-semibold rounded-lg transition shrink-0 flex items-center gap-1.5 ${
                     isSel
                       ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      : isInactive
+                      ? 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                 >
                   <Briefcase className="w-3 h-3" />
                   <span>{p.name}</span>
+                  {isInactive && (
+                    <span className={`text-[9px] px-1 py-0.2 rounded font-bold uppercase ${isSel ? 'bg-indigo-800 text-indigo-100' : 'bg-slate-200 text-slate-600'}`}>
+                      Inactive
+                    </span>
+                  )}
                   <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${isSel ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-700'}`}>
                     {count}
                   </span>
@@ -379,9 +401,29 @@ export const AdvisorDetailView: React.FC<AdvisorDetailViewProps> = ({
 
         {/* Tab: Portfolios Breakdown Cards */}
         {activeTabSection === 'portfolios' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700">
+                Strategy Baskets ({portfolios.length})
+              </span>
+              {portfolios.length > 0 && (
+                <button
+                  type="button"
+                  id={`btn-export-advisor-portfolios-${advisor.id}`}
+                  onClick={() => exportPortfoliosCSV(portfolios, [advisor])}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition shadow-2xs cursor-pointer"
+                  title="Export these portfolios as CSV"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Export Portfolios CSV</span>
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {portfolioPerformances.map((pp) => {
               const isGain = pp.unrealizedPnL >= 0;
+              const isPortInactive = pp.portfolio.status === 'INACTIVE';
               return (
                 <div
                   key={pp.portfolio.id}
@@ -389,17 +431,39 @@ export const AdvisorDetailView: React.FC<AdvisorDetailViewProps> = ({
                     setSelectedPortfolioId(pp.portfolio.id);
                     setActiveTabSection('holdings');
                   }}
-                  className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white hover:border-indigo-300 hover:shadow-xs transition cursor-pointer flex flex-col justify-between"
+                  className={`p-4 rounded-xl border transition cursor-pointer flex flex-col justify-between ${
+                    isPortInactive
+                      ? 'border-slate-200 bg-slate-50/70 hover:bg-white hover:border-slate-300 opacity-90'
+                      : 'border-slate-200 bg-slate-50/50 hover:bg-white hover:border-indigo-300 hover:shadow-xs'
+                  }`}
                 >
                   <div>
                     <div className="flex items-center justify-between pb-2 border-b border-slate-200">
                       <div className="flex items-center gap-2">
-                        <Briefcase className="w-4 h-4 text-indigo-600" />
-                        <h4 className="font-bold text-slate-900 text-xs">{pp.portfolio.name}</h4>
+                        <Briefcase className={`w-4 h-4 ${isPortInactive ? 'text-slate-400' : 'text-indigo-600'}`} />
+                        <div>
+                          <h4 className="font-bold text-slate-900 text-xs">{pp.portfolio.name}</h4>
+                        </div>
                       </div>
-                      <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
-                        {pp.portfolio.type}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+                            isPortInactive
+                              ? 'bg-slate-200 text-slate-600 border border-slate-300'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              isPortInactive ? 'bg-slate-400' : 'bg-emerald-500 animate-pulse'
+                            }`}
+                          />
+                          {isPortInactive ? 'Inactive' : 'Active'}
+                        </span>
+                        <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+                          {pp.portfolio.type}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
@@ -423,6 +487,24 @@ export const AdvisorDetailView: React.FC<AdvisorDetailViewProps> = ({
                       </div>
                     </div>
 
+                    {/* Activation / Deactivation Dates */}
+                    <div className="pt-2 mt-2 border-t border-slate-100 space-y-0.5 text-[10px]">
+                      <div className="flex items-center gap-1 text-slate-500">
+                        <Calendar className="w-3 h-3 text-slate-400" />
+                        <span>Activation Date:</span>
+                        <strong className="font-mono text-slate-800">
+                          {pp.portfolio.activationDate || pp.portfolio.createdAt}
+                        </strong>
+                      </div>
+                      {isPortInactive && (
+                        <div className="flex items-center gap-1 text-amber-800">
+                          <Calendar className="w-3 h-3 text-amber-500" />
+                          <span>Deactivation Date:</span>
+                          <strong className="font-mono">{pp.portfolio.deactivationDate || 'N/A'}</strong>
+                        </div>
+                      )}
+                    </div>
+
                     {pp.portfolio.description && (
                       <p className="text-[11px] text-slate-500 mt-2 line-clamp-2">{pp.portfolio.description}</p>
                     )}
@@ -437,6 +519,7 @@ export const AdvisorDetailView: React.FC<AdvisorDetailViewProps> = ({
                 </div>
               );
             })}
+            </div>
           </div>
         )}
 
